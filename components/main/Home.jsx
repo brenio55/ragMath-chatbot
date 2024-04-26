@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 
+const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY
+console.log(apiKeyGlobal)
+
+
 function Home() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
 
-  useEffect(() => {
-    // Fetch messages from the API when the component mounts
-    fetch('https://example.com/api/messages')
-      .then(response => response.json())
-      .then(data => setMessages(data))
-      .catch(error => console.error('Error fetching messages:', error));
-  }, []); // Empty dependency array ensures this effect runs only once when the component mounts
+  // useEffect(() => {
+  //   // Fetch messages from the API when the component mounts
+  //   fetch('https://example.com/api/messages')
+  //     .then(response => response.json())
+  //     .then(data => setMessages(data))
+  //     .catch(error => console.error('Error fetching messages:', error));
+  // }, []); // Empty dependency array ensures this effect runs only once when the component mounts
 
   const handleInputChange = (event) => {
     setInputText(event.target.value);
@@ -24,6 +28,8 @@ function Home() {
       setInputText('');
     }
   };
+
+ 
 
   return (
     <>
