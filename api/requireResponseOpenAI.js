@@ -1,27 +1,26 @@
 import { createRequire } from "module"
 const require = createRequire(import.meta.url);
 
-const { Configuration } = require('openai');
+require('dotenv').config({path: './../.env'})
+
+const { OpenAI } = require('openai');
 
 const apiKeyGlobal = process.env.VITE_LastSecondTeacherAPIKEY
+console.log(apiKeyGlobal)
 
-const config = new Configuration({
-  apiKey: apiKeyGlobal
-});
+const openAI = new OpenAI({ apiKey: apiKeyGlobal });
 
-// const openAI = new OpenAIAPIAccess(config)
+const runPrompt = async () => {
+  const prompt = "Tell me an interesting joke about cars";
 
-// const runPrompt = async () => {
-//   const prompt = "Tell me an interesting joke about cars";
+    const response = await openAI.createCompletion({
+      Model: "text-davinci-003",
+      prompt: prompt,
+      max_tokens: 2048,
+      temperature: 1
+    })
 
-//     const response = await openAI.createCompletion({
-//       Model: "text-davinci-003",
-//       prompt: prompt,
-//       max_tokens: 2048,
-//       temperature: 1
-//     })
+    console.log(response)
+  }
 
-//     console.log(response)
-//   }
-
-//   runPrompt()
+  runPrompt()
