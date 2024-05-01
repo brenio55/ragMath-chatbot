@@ -13,14 +13,18 @@ const openAI = new OpenAI({ apiKey: apiKeyGlobal });
 const runPrompt = async () => {
   const prompt = "Tell me an interesting joke about cars";
 
-    const response = await openAI.createCompletion({
-      Model: "text-davinci-003",
-      prompt: prompt,
-      max_tokens: 2048,
-      temperature: 1
+    const response = await openAI.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      max_tokens: 1000,
+      temperature: 1,
+      messages: [{"role": "user", 
+                  "content": prompt
+                }]
     })
 
-    console.log(response)
+    
+
+    console.log(response.choices[0].message)
   }
 
   runPrompt()
