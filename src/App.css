@@ -1,3 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+
+
 @keyframes slideInFromRight {
   0% {
     transform: translateX(100%);
@@ -19,11 +22,18 @@
 .message.user {
   color: black;
   background-color: #87ceeb; /* Azul claro */
+  text-align: left;
 }
 
 .message.system {
+  text-align: left;
   color: white;
   background-color: #ff6347; /* Tomate */
+  font-family: 'Roboto', sans-serif;
+}
+
+.message.system.error{
+  font-style: italic;
 }
 
 html {
@@ -36,6 +46,7 @@ html {
   text-align: center;
   align-content: center;
   transition: all 1.2s;
+  font-family: 'Roboto', sans-serif;
 }
 
 .chat-container {

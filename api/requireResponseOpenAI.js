@@ -34,9 +34,13 @@ const runPrompt = async () => {
         });
 
         // Exibir a resposta
+        console.log(response)
         console.log(response.choices[0].message);
+
+        return response
     } catch (error) {
         console.error("Error:", error.message);
+        return response
     }
 };
 
