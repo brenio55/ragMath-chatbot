@@ -19,7 +19,7 @@ const openAI = new OpenAI({ apiKey });
 
 // Função para executar o prompt
 const runPrompt = async () => {
-    const prompt = "Please make a worksheet about Biology for studying.";
+    const prompt = "Can you tell me a joke of cars?";
 
     try {
         // Solicitar completions para o modelo
