@@ -1,3 +1,31 @@
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.message {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 5px;
+  animation: slideInFromRight 0.5s ease-in-out;
+}
+
+.message.user {
+  color: black;
+  background-color: #87ceeb; /* Azul claro */
+}
+
+.message.system {
+  color: white;
+  background-color: #ff6347; /* Tomate */
+}
+
 html {
   color: white;
   height: 100vh;
@@ -7,6 +35,7 @@ html {
   justify-content: center;
   text-align: center;
   align-content: center;
+  transition: all 1.2s;
 }
 
 .chat-container {
@@ -15,8 +44,6 @@ html {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  
-  
 }
 
 .chat-messages {
@@ -27,17 +54,11 @@ html {
   border-radius: 10px;
   background-color: #6c6c6c; /* Branco */
   box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+  scrollbar-width: none; /* For Firefox */
 }
 
-.message {
-  margin-bottom: 10px;
-  padding: 10px;
-  border-radius: 5px;
-}
-
-.message.user {
-  color: black;
-  background-color: #87ceeb; /* Azul claro */
+.chat-messages::-webkit-scrollbar {
+  display: none; /* For WebKit browsers like Chrome */
 }
 
 .chat-input-form {
@@ -59,7 +80,6 @@ html {
   background-color: #87ceeb; /* Azul claro */
   border: none;
   border-radius: 5px;
-  /* color: #fff; */
   color: black;
   cursor: pointer;
 }

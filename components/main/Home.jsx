@@ -1,40 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
-const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY
-console.log(apiKeyGlobal)
-
+const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
+console.log(apiKeyGlobal);
 
 function Home() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
 
-  // useEffect(() => {
-  //   // Fetch messages from the API when the component mounts
-  //   fetch('https://example.com/api/messages')
-  //     .then(response => response.json())
-  //     .then(data => setMessages(data))
-  //     .catch(error => console.error('Error fetching messages:', error));
-  // }, []); // Empty dependency array ensures this effect runs only once when the component mounts
-
   const handleInputChange = (event) => {
     setInputText(event.target.value);
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (inputText.trim() !== '') {
-      // Here you would send the inputText to your API, but for now, let's just add it to the local state
-      setMessages([...messages, { text: inputText, sender: 'user' }]);
+      const newMessages = [...messages, { text: `Me: ${inputText}`, sender: 'user' }];
+
+      try {
+        const response = await fetch('/API/requireResponseOpenAI.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKeyGlobal}`
+          },
+          body: JSON.stringify({ inputText })
+        });
+
+        if (!response.ok) {
+          throw new Error('No response from system');
+        }
+
+        const data = await response.json();
+        if (data && data.Response) {
+          newMessages.push({ text: `System: ${data.Response}`, sender: 'system' });
+        } else {
+          throw new Error('No Return from System');
+        }
+
+      } catch (error) {
+        console.error('Error:', error);
+        newMessages.push({ text: 'System: No Return from System. Please, try again later.', sender: 'system' });
+      }
+
+      setMessages(newMessages);
       setInputText('');
     }
   };
 
- 
-
   return (
     <>
       <h2>Hi! Welcome to studyGPT!!</h2>
-      <h3>Let me know what grade are you looking for, to me to create c: </h3>
+      <h3>Let me know what grade you're looking for me to create c:</h3>
       <div className="chat-container">
         <div className="chat-messages">
           {messages.map((message, index) => (
