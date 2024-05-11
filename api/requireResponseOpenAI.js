@@ -1,48 +1,54 @@
+import express from 'express';
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-
 require('dotenv').config({ path: './../.env' });
-
 const { OpenAI } = require('openai');
 
-// Obter a chave da API do ambiente
-const apiKey = process.env.VITE_LastSecondTeacherAPIKEY;
+const app = express();
+app.use(express.json());
 
-// Verificar se a chave da API está presente
+const apiKey = process.env.VITE_LastSecondTeacherAPIKEY;
+console.log(apiKey)
 if (!apiKey) {
     console.error("API key not found. Please make sure to set the VITE_LastSecondTeacherAPIKEY environment variable.");
-    process.exit(1); // Encerrar o processo com erro
+    process.exit(1);
 }
 
-// Inicializar o cliente OpenAI
 const openAI = new OpenAI({ apiKey });
 
-// Função para executar o prompt
-const runPrompt = async () => {
-    const prompt = "Can you tell me a joke of cars?";
+const cors=require("cors");
+const corsOptions ={
+   origin:'*', 
+   credentials:true,            //access-control-allow-credentials:true
+   optionSuccessStatus:200,
+}
+
+app.use(cors(corsOptions)) 
+
+app.post('/api/requireResponseOpenAI', async (req, res) => {
+    const { inputText } = req.body;
 
     try {
-        // Solicitar completions para o modelo
         const response = await openAI.chat.completions.create({
             model: "gpt-3.5-turbo",
             max_tokens: 1000,
             temperature: 1,
             messages: [
-                { "role": "system", "content": "You are a system that generates Worksheets for teachers and students. You will deliver a worksheet on JSON to SYSTEM everytime the main user decides that the worksheet he talked about is great." },
-                { "role": "user", "content": prompt }
+                { "role": "system", "content": "You are a system that generates Worksheets for teachers and students." },
+                { "role": "user", "content": inputText }
             ]
         });
 
-        // Exibir a resposta
-        console.log(response)
-        console.log(response.choices[0].message);
-
-        return response
+        res.json({ message: response.choices[0].message.content });
     } catch (error) {
         console.error("Error:", error.message);
-        return response
+        res.status(500).send({ error: error.message });
     }
-};
+});
 
-// Executar o prompt
-runPrompt();
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+
