@@ -79,6 +79,7 @@ function Home() {
 
   return (
     <>
+    <div className="home">
       <h2>{title}</h2>
       <h3>{subTitle}</h3>
       <div className="chat-container">
@@ -95,6 +96,7 @@ function Home() {
           <button type="button" onClick={clearHistory}>Clear History</button>
         </form>
       </div>
+    </div>
     </>
   );
 }
