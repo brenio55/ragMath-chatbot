@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
+const apiUrl = import.meta.env.VITE_API_URL;
 const typingVelocity = 50; // Global typing speed, adjust as needed
 
 function Home() {
@@ -44,7 +45,7 @@ function Home() {
         const systemIndicator = { text: "System is writing...", sender: 'system' };
         setMessages(messages => [...messages, systemIndicator]);
 
-        const response = await fetch('http://localhost:3000/api/requireResponseOpenAI', {
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
