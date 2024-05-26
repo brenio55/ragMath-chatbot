@@ -42,7 +42,7 @@ function Home() {
       setHistory(history => [...history, userMessage]);
 
       try {
-        const systemIndicator = { text: "System is writing...", sender: 'system' };
+        const systemIndicator = { text: "...", sender: 'system', loading: true };
         setMessages(messages => [...messages, systemIndicator]);
 
         const response = await fetch(apiUrl, {
@@ -58,8 +58,14 @@ function Home() {
         const data = await response.json();
 
         if (data && data.message) {
+            const systemMessage = (
+              <span>
+                <span className="system-label">System: </span>
+                <span className="system-text">{data.message}</span>
+              </span>
+            );
             setMessages(messages => {
-              return messages.filter(msg => msg.text !== "System is writing...").concat({ text: `System: ${data.message}`, sender: 'system' });
+              return messages.filter(msg => msg.text !== "...").concat({ text: systemMessage, sender: 'system' });
             });
             setHistory(history => [...history, `System: ${data.message}`]);
         } else {
@@ -67,9 +73,14 @@ function Home() {
         }
       } catch (error) {
         console.error("Error:", error);
-        const errorMessage = `System: No Return from System. Please, try again later. Error: ${error.message}`;
-        setMessages(messages => messages.filter(msg => msg.text !== "System is writing...").concat({ text: errorMessage, sender: 'system', error: true }));
-        setHistory(history => [...history, errorMessage]);
+        const errorMessage = (
+          <span>
+            <span className="system-label">System: </span>
+            <span className="system-text">No Return from System. Please, try again later. Error: {error.message}</span>
+          </span>
+        );
+        setMessages(messages => messages.filter(msg => msg.text !== "...").concat({ text: errorMessage, sender: 'system', error: true }));
+        setHistory(history => [...history, `System: No Return from System. Please, try again later. Error: ${error.message}`]);
       }
 
       setInputText('');
@@ -87,18 +98,30 @@ function Home() {
         <div className="chat-messages">
           {messages.map((message, index) => (
             <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
-              {message.text}
+              {message.loading ? <LoadingDots /> : message.text}
             </div>
           ))}
+
+          <form onSubmit={handleSubmit} className="chat-input-form">
+                <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
+                <button type="submit">Send</button>
+                <button type="button" onClick={clearHistory}>Clear History</button>
+          </form>
         </div>
-        <form onSubmit={handleSubmit} className="chat-input-form">
-          <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-          <button type="submit">Send</button>
-          <button type="button" onClick={clearHistory}>Clear History</button>
-        </form>
+        
       </div>
     </div>
     </>
+  );
+}
+
+function LoadingDots() {
+  return (
+    <div className="loading-dots">
+      <span>.</span>
+      <span>.</span>
+      <span>.</span>
+    </div>
   );
 }
 
