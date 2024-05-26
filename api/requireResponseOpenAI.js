@@ -93,7 +93,7 @@ app.post('/api/requireResponseOpenAI/clearThread', (req, res) => {
 });
 
 app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
-    const { threadId } = req.body;
+    const { threadId, role } = req.body;
     console.log('Generating PDF for thread:', threadId);
 
     try {
@@ -105,13 +105,17 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
 
         const conversationHistory = messages.map(msg => `${msg.role === 'user' ? 'User' : 'System'}: ${msg.content}`).join('\n');
 
-        // Generate worksheet content based on the conversation history
+        // Generate worksheet content based on the conversation history and role
+        const roleSpecificPrompt = role === 'teacher' 
+            ? "You are an AI that generates detailed worksheets for teachers based on user inquiries. Create a comprehensive worksheet including explanations, questions, and exercises. Provide the main purpose of the activity and the correct answers in light gray below each question."
+            : "You are an AI that generates detailed worksheets for students based on user inquiries. Create a comprehensive worksheet including explanations, questions, and exercises. The answers should only appear at the end of the document.";
+
         const response = await openAI.chat.completions.create({
             model: "gpt-4",
-            max_tokens: 1000,
+            max_tokens: 1500,
             temperature: 1,
             messages: [
-                { role: "system", content: "You are an AI that generates detailed worksheets based on user inquiries. Create a comprehensive worksheet including explanations, questions, and exercises based on the following conversation history:" },
+                { role: "system", content: roleSpecificPrompt },
                 { role: "user", content: conversationHistory }
             ]
         });
@@ -159,6 +163,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         const paragraphs = worksheetContent.split('\n').map(paragraph => wrapText(paragraph, textWidth, ubuntuFont, fontSize)).flat();
 
         let y = textHeight;
+
         for (const paragraph of paragraphs) {
             if (y - fontSize < 0) {
                 page = pdfDoc.addPage();

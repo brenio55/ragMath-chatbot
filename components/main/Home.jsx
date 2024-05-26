@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
 const apiUrl = import.meta.env.VITE_API_URL.replace('/requireResponseOpenAI', '');
+const programMode = import.meta.env.VITE_PROGRAM_MODE; // Read the program mode
 
 const typingVelocity = 50; // Global typing speed, adjust as needed
 
@@ -15,31 +16,42 @@ function Home() {
   const [threadCleared, setThreadCleared] = useState(false);
   const [threadId, setThreadId] = useState(uuidv4()); // Generate a new thread ID
   const [role, setRole] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const typingIntervalRef = useRef(null);
 
   useEffect(() => {
-    const typeText = (text, setter, onComplete) => {
-      let typedText = '';
-      let idx = 0;
-      const interval = setInterval(() => {
-        if (idx < text.length) {
-          typedText += text[idx];
-          setter(typedText);
-          idx++;
-        } else {
-          clearInterval(interval);
-          if (onComplete) onComplete();
+    if (!role) {
+      const typeText = (text, setter, onComplete) => {
+        let typedText = '';
+        let idx = 0;
+        typingIntervalRef.current = setInterval(() => {
+          if (idx < text.length) {
+            typedText += text[idx];
+            setter(typedText);
+            idx++;
+          } else {
+            clearInterval(typingIntervalRef.current);
+            typingIntervalRef.current = null;
+            if (onComplete) onComplete();
+          }
+        }, typingVelocity);
+      };
+
+      typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
+
+      return () => {
+        if (typingIntervalRef.current) {
+          clearInterval(typingIntervalRef.current);
         }
-      }, typingVelocity);
-    };
-
-    typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
-
-    return () => {
-      clearThread();
-    };
-  }, []);
+        clearThread();
+      };
+    }
+  }, [role]);
 
   const handleRoleSelection = (selectedRole) => {
+    if (typingIntervalRef.current) {
+      clearInterval(typingIntervalRef.current);
+    }
     console.log('Role selected:', selectedRole);
     setRole(selectedRole);
     setTitle("Last Second Teacher - AI Worksheet Generator");
@@ -67,7 +79,7 @@ function Home() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKeyGlobal}`,
+            'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
           },
           body: JSON.stringify({ inputText, threadId, role }),
         });
@@ -115,13 +127,13 @@ function Home() {
     setThreadCleared(true);
     setTimeout(() => setThreadCleared(false), 3000);
 
-    console.log('Clearing thread:', oldThreadId);
+    console.log('Clearing thread:', programMode === 'local' ? oldThreadId : 'hidden');
     try {
       const response = await fetch(`${apiUrl}/requireResponseOpenAI/clearThread`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKeyGlobal}`,
+          'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
         },
         body: JSON.stringify({ threadId: oldThreadId }),
       });
@@ -132,13 +144,14 @@ function Home() {
   };
 
   const generatePDF = async () => {
-    console.log('Generating PDF for thread:', threadId);
+    setPdfLoading(true);
+    console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
     try {
       const response = await fetch(`${apiUrl}/requireResponseOpenAI/generatePDF`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKeyGlobal}`,
+          'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
         },
         body: JSON.stringify({ threadId }),
       });
@@ -153,11 +166,32 @@ function Home() {
         link.click();
         link.parentNode.removeChild(link);
         console.log('PDF generated and download triggered');
+
+        const pdfMessage = (
+          <span>
+            <span className="system-label">System: </span>
+            <span className="system-text">PDF generated successfully. <a href={url} download="worksheet.pdf">Download PDF again</a></span>
+          </span>
+        );
+
+        setMessages(messages => messages.concat({ text: pdfMessage, sender: 'system' }));
+        setHistory(history => [...history, 'System: PDF generated successfully.']);
+
       } else {
         throw new Error('Failed to generate PDF');
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
+      const errorMessage = (
+        <span>
+          <span className="system-label">System: </span>
+          <span className="system-text">Error generating PDF. Please try again later. Error: {error.message}</span>
+        </span>
+      );
+      setMessages(messages => messages.concat({ text: errorMessage, sender: 'system', error: true }));
+      setHistory(history => [...history, `System: Error generating PDF. Please try again later. Error: ${error.message}`]);
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -174,7 +208,12 @@ function Home() {
                   {message.loading ? <LoadingDots /> : message.text}
                 </div>
               ))}
-
+              {pdfLoading && (
+                <div className="message system">
+                  <LoadingDots />
+                  <span>Generating PDF...</span>
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="chat-input-form">
                 <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
                 <button type="submit">Send</button>
@@ -187,8 +226,10 @@ function Home() {
       ) : (
         <>
           <h2>{title}</h2>
-          <button onClick={() => handleRoleSelection('student')}>I am a Student</button>
-          <button onClick={() => handleRoleSelection('teacher')}>I am a Teacher</button>
+          <div className="buttonsInit">
+            <button onClick={() => handleRoleSelection('student')}>I am a Student</button>
+            <button onClick={() => handleRoleSelection('teacher')}>I am a Teacher</button>
+          </div>
         </>
       )}
       {threadCleared && <div className="thread-cleared">The Thread was cleared</div>}
