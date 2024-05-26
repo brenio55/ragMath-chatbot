@@ -10,6 +10,7 @@ function Home() {
   const [title, setTitle] = useState('');
   const [subTitle, setSubTitle] = useState('');
   const [history, setHistory] = useState([]);
+  const [threadCleared, setThreadCleared] = useState(false);
 
   useEffect(() => {
     const typeText = (text, setter, onComplete) => {
@@ -87,30 +88,50 @@ function Home() {
     }
   };
 
-  const clearHistory = () => setHistory([]);
+  const clearThread = async () => {
+    setMessages([]);
+    setHistory([]);
+    setThreadCleared(true);
+    setTimeout(() => setThreadCleared(false), 3000);
+
+    // Placeholder for clearing the thread in the API
+    console.log('Awaiting for configuration of thread cleaning');
+
+    try {
+      await fetch(`${apiUrl}/clear-thread`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKeyGlobal}`,
+        },
+      });
+    } catch (error) {
+      console.error('Error clearing thread:', error);
+    }
+  };
 
   return (
     <>
-    <div className="home">
-      <h2>{title}</h2>
-      <h3>{subTitle}</h3>
-      <div className="chat-container">
-        <div className="chat-messages">
-          {messages.map((message, index) => (
-            <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
-              {message.loading ? <LoadingDots /> : message.text}
-            </div>
-          ))}
+      <div className="home">
+        <h2>{title}</h2>
+        <h3>{subTitle}</h3>
+        <div className="chat-container">
+          <div className="chat-messages">
+            {messages.map((message, index) => (
+              <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
+                {message.loading ? <LoadingDots /> : message.text}
+              </div>
+            ))}
 
-          <form onSubmit={handleSubmit} className="chat-input-form">
-                <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-                <button type="submit">Send</button>
-                <button type="button" onClick={clearHistory}>Clear History</button>
-          </form>
+            <form onSubmit={handleSubmit} className="chat-input-form">
+              <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
+              <button type="submit">Send</button>
+              <button type="button" onClick={clearThread}>Clear Thread</button>
+            </form>
+          </div>
         </div>
-        
       </div>
-    </div>
+      {threadCleared && <div className="thread-cleared">The Thread was cleared</div>}
     </>
   );
 }
