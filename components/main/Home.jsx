@@ -32,7 +32,7 @@ function Home() {
       }, typingVelocity);
     };
 
-    typeText("Welcome! Are you a student or a teacher?", setTitle);
+    typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
 
     return () => {
       clearThread();
@@ -42,7 +42,7 @@ function Home() {
   const handleRoleSelection = (selectedRole) => {
     console.log('Role selected:', selectedRole);
     setRole(selectedRole);
-    setTitle("Welcome! I'm the Last Second Teacher, how can I help you today?");
+    setTitle("Last Second Teacher - AI Worksheet Generator");
     setSubTitle("Let me know what grade you're looking for me to create :)");
   };
 
