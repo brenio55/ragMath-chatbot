@@ -1,13 +1,21 @@
 import express from 'express';
 import { createRequire } from "module";
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'; // Import StandardFonts from pdf-lib
+import { PDFDocument, rgb } from 'pdf-lib';
 import { OpenAI } from 'openai';
 import cors from 'cors';
 import fetch from 'node-fetch'; // Add this if you don't have fetch available globally
+import fontkit from '@pdf-lib/fontkit';
+import fs from 'fs'; // Import fs to read local files
+import path from 'path'; // Import path to handle file paths
+import { fileURLToPath } from 'url'; // Import to define __dirname
 
 const require = createRequire(import.meta.url);
 
 require('dotenv').config({ path: './../.env' });
+
+// Define __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
@@ -38,7 +46,7 @@ app.post('/api/requireResponseOpenAI', async (req, res) => {
 
     try {
         const messages = threads[threadId] || [
-            { "role": "system", "content": `You are a ${role} using a system that generates Worksheets for teachers and students. If you receive an inquiry about generating a worksheet, don't generate it directly as a response. Instead, await for the front-end to send an inquiry to generate a PDF. Say to the user to click Generate PDF.` }
+            { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, tell them to press the 'Generate PDF' button to create the worksheet.` }
         ];
         console.log('Current thread messages:', messages);
 
@@ -58,7 +66,7 @@ app.post('/api/requireResponseOpenAI', async (req, res) => {
         // Save system response in thread
         if (!threads[threadId]) {
             threads[threadId] = [
-                { "role": "system", "content": `You are a ${role} using a system that generates Worksheets for teachers and students. If you receive an inquiry about generating a worksheet, don't generate it directly as a response. Instead, await for the front-end to send an inquiry to generate a PDF. Say to the user to click Generate PDF.` }
+                { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet. Create a short response for that like "sure, I can create a worksheet about that. Please click the button "Generate PDF" so that we can start."` }
             ];
         }
         threads[threadId].push(systemMessage);
@@ -95,18 +103,35 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         }
         console.log('Messages to be included in PDF:', messages);
 
-        const content = messages.map(msg => msg.content.replace(/\n/g, ' ')).join('\n\n');
+        const conversationHistory = messages.map(msg => `${msg.role === 'user' ? 'User' : 'System'}: ${msg.content}`).join('\n');
+
+        // Generate worksheet content based on the conversation history
+        const response = await openAI.chat.completions.create({
+            model: "gpt-4",
+            max_tokens: 1000,
+            temperature: 1,
+            messages: [
+                { role: "system", content: "You are an AI that generates detailed worksheets based on user inquiries. Create a comprehensive worksheet including explanations, questions, and exercises based on the following conversation history:" },
+                { role: "user", content: conversationHistory }
+            ]
+        });
+
+        const worksheetContent = response.choices[0].message.content;
+        console.log('Generated worksheet content:', worksheetContent);
 
         const pdfDoc = await PDFDocument.create();
+        pdfDoc.registerFontkit(fontkit);
 
         let page = pdfDoc.addPage();
         const { width, height } = page.getSize();
         const fontSize = 12;
 
-        // Use the default font provided by pdf-lib
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        // Read the Ubuntu font file from the public directory
+        const fontPath = path.resolve(__dirname, '../public/Ubuntu-Regular.ttf');
+        const fontBytes = fs.readFileSync(fontPath);
+        const ubuntuFont = await pdfDoc.embedFont(fontBytes);
 
-        page.setFont(font);
+        page.setFont(ubuntuFont);
         page.setFontSize(fontSize);
 
         const textWidth = width - 100;
@@ -131,7 +156,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
             return lines;
         };
 
-        const paragraphs = wrapText(content, textWidth, font, fontSize);
+        const paragraphs = worksheetContent.split('\n').map(paragraph => wrapText(paragraph, textWidth, ubuntuFont, fontSize)).flat();
 
         let y = textHeight;
         for (const paragraph of paragraphs) {
@@ -143,7 +168,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
                 x: 50,
                 y,
                 size: fontSize,
-                font: font,
+                font: ubuntuFont,
                 color: rgb(0, 0, 0),
             });
             y -= fontSize + 5;
@@ -153,7 +178,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
             x: 50,
             y: 20,
             size: 10,
-            font: font,
+            font: ubuntuFont,
             color: rgb(0, 0, 0),
         });
 
