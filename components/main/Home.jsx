@@ -214,13 +214,20 @@ function Home() {
                   <span>Generating PDF...</span>
                 </div>
               )}
-              <form onSubmit={handleSubmit} className="chat-input-form">
-                <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-                <button type="submit">Send</button>
-                <button type="button" onClick={generatePDF}>Generate PDF</button>
-                <button type="button" onClick={clearThread}>Clear Thread</button>
-              </form>
             </div>
+            <form onSubmit={handleSubmit} className="chat-input-form">
+                <div className="buttonFlex">
+                  <div className="flex twoItems">
+                    <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
+                    <button type="submit">Send</button>
+                  </div>
+
+                  <div className="flex twoItems">
+                    <button type="button" onClick={generatePDF}>Generate PDF</button>
+                    <button type="button" onClick={clearThread}>Clear Thread</button>
+                  </div>
+                </div>
+              </form>
           </div>
         </>
       ) : (
