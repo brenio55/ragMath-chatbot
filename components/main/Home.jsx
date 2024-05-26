@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL.replace('/requireResponseOpenAI', '');
+
 const typingVelocity = 50; // Global typing speed, adjust as needed
 
 function Home() {
@@ -11,6 +13,8 @@ function Home() {
   const [subTitle, setSubTitle] = useState('');
   const [history, setHistory] = useState([]);
   const [threadCleared, setThreadCleared] = useState(false);
+  const [threadId, setThreadId] = useState(uuidv4()); // Generate a new thread ID
+  const [role, setRole] = useState('');
 
   useEffect(() => {
     const typeText = (text, setter, onComplete) => {
@@ -28,12 +32,24 @@ function Home() {
       }, typingVelocity);
     };
 
-    typeText("Welcome! I'm the Last Second Teacher, how can I help you today?", setTitle, () => {
-      typeText("Let me know what grade you're looking for me to create :)", setSubTitle);
-    });
+    typeText("Welcome! Are you a student or a teacher?", setTitle);
+
+    return () => {
+      clearThread();
+    };
   }, []);
 
-  const handleInputChange = event => setInputText(event.target.value);
+  const handleRoleSelection = (selectedRole) => {
+    console.log('Role selected:', selectedRole);
+    setRole(selectedRole);
+    setTitle("Welcome! I'm the Last Second Teacher, how can I help you today?");
+    setSubTitle("Let me know what grade you're looking for me to create :)");
+  };
+
+  const handleInputChange = event => {
+    setInputText(event.target.value);
+    // console.log('Input text changed:', event.target.value);
+  };
 
   const handleSubmit = async event => {
     event.preventDefault();
@@ -46,31 +62,33 @@ function Home() {
         const systemIndicator = { text: "...", sender: 'system', loading: true };
         setMessages(messages => [...messages, systemIndicator]);
 
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKeyGlobal}`,
-            },
-            body: JSON.stringify({ inputText }),
+        console.log('Sending request to API:', { inputText, threadId, role });
+        const response = await fetch(`${apiUrl}/requireResponseOpenAI`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKeyGlobal}`,
+          },
+          body: JSON.stringify({ inputText, threadId, role }),
         });
 
         if (!response.ok) throw new Error('No response from system');
         const data = await response.json();
+        console.log('API response received:', data);
 
         if (data && data.message) {
-            const systemMessage = (
-              <span>
-                <span className="system-label">System: </span>
-                <span className="system-text">{data.message}</span>
-              </span>
-            );
-            setMessages(messages => {
-              return messages.filter(msg => msg.text !== "...").concat({ text: systemMessage, sender: 'system' });
-            });
-            setHistory(history => [...history, `System: ${data.message}`]);
+          const systemMessage = (
+            <span>
+              <span className="system-label">System: </span>
+              <span className="system-text">{data.message}</span>
+            </span>
+          );
+          setMessages(messages => {
+            return messages.filter(msg => msg.text !== "...").concat({ text: systemMessage, sender: 'system' });
+          });
+          setHistory(history => [...history, `System: ${data.message}`]);
         } else {
-            throw new Error('No valid response from system');
+          throw new Error('No valid response from system');
         }
       } catch (error) {
         console.error("Error:", error);
@@ -89,50 +107,92 @@ function Home() {
   };
 
   const clearThread = async () => {
+    const oldThreadId = threadId;
+    const newThreadId = uuidv4(); // Generate a new thread ID
+    setThreadId(newThreadId);
     setMessages([]);
     setHistory([]);
     setThreadCleared(true);
     setTimeout(() => setThreadCleared(false), 3000);
 
-    // Placeholder for clearing the thread in the API
-    console.log('Awaiting for configuration of thread cleaning');
-
+    console.log('Clearing thread:', oldThreadId);
     try {
-      await fetch(`${apiUrl}/clear-thread`, {
+      const response = await fetch(`${apiUrl}/requireResponseOpenAI/clearThread`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKeyGlobal}`,
         },
+        body: JSON.stringify({ threadId: oldThreadId }),
       });
+      console.log('Thread cleared response:', await response.json());
     } catch (error) {
       console.error('Error clearing thread:', error);
     }
   };
 
-  return (
-    <>
-      <div className="home">
-        <h2>{title}</h2>
-        <h3>{subTitle}</h3>
-        <div className="chat-container">
-          <div className="chat-messages">
-            {messages.map((message, index) => (
-              <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
-                {message.loading ? <LoadingDots /> : message.text}
-              </div>
-            ))}
+  const generatePDF = async () => {
+    console.log('Generating PDF for thread:', threadId);
+    try {
+      const response = await fetch(`${apiUrl}/requireResponseOpenAI/generatePDF`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKeyGlobal}`,
+        },
+        body: JSON.stringify({ threadId }),
+      });
 
-            <form onSubmit={handleSubmit} className="chat-input-form">
-              <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-              <button type="submit">Send</button>
-              <button type="button" onClick={clearThread}>Clear Thread</button>
-            </form>
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(new Blob([blob]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'worksheet.pdf');
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        console.log('PDF generated and download triggered');
+      } else {
+        throw new Error('Failed to generate PDF');
+      }
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+    }
+  };
+
+  return (
+    <div className="home">
+      {role ? (
+        <>
+          <h2>{title}</h2>
+          <h3>{subTitle}</h3>
+          <div className="chat-container">
+            <div className="chat-messages">
+              {messages.map((message, index) => (
+                <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
+                  {message.loading ? <LoadingDots /> : message.text}
+                </div>
+              ))}
+
+              <form onSubmit={handleSubmit} className="chat-input-form">
+                <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
+                <button type="submit">Send</button>
+                <button type="button" onClick={generatePDF}>Generate PDF</button>
+                <button type="button" onClick={clearThread}>Clear Thread</button>
+              </form>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          <h2>{title}</h2>
+          <button onClick={() => handleRoleSelection('student')}>I am a Student</button>
+          <button onClick={() => handleRoleSelection('teacher')}>I am a Teacher</button>
+        </>
+      )}
       {threadCleared && <div className="thread-cleared">The Thread was cleared</div>}
-    </>
+    </div>
   );
 }
 
