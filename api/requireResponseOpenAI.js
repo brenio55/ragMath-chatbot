@@ -32,7 +32,7 @@ const openAI = new OpenAI({ apiKey });
 var cors = require('cors')
 
 app.use(express.urlencoded({extended:true}));
-app.use(cors())
+app.use(cors({origin: "*"}))
 
 // Store thread information
 const threads = {};
@@ -85,7 +85,7 @@ app.post('/api/requireResponseOpenAI/clearThread', (req, res) => {
         res.json({ message: "Thread cleared successfully" });
     } else {
         console.error('Thread not found:', threadId);
-        res.status(404).send({ error: "Thread not found" });
+        res.status(202).send({ error: "Thread not found" });
     }
 });
 

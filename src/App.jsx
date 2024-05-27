@@ -9,7 +9,7 @@ function App() {
 
   return (
     <>
-    <div class="gradient"></div>
+    <div className="gradient"></div>
       <Home></Home>
     </>
   )
