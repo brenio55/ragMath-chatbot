@@ -18,40 +18,46 @@ function Home() {
   const [role, setRole] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const typingIntervalRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     if (!role) {
-      const typeText = (text, setter, onComplete) => {
-        let typedText = '';
-        let idx = 0;
-        typingIntervalRef.current = setInterval(() => {
-          if (idx < text.length) {
-            typedText += text[idx];
-            setter(typedText);
-            idx++;
-          } else {
-            clearInterval(typingIntervalRef.current);
-            typingIntervalRef.current = null;
-            if (onComplete) onComplete();
-          }
-        }, typingVelocity);
-      };
-
       typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
-
       return () => {
-        if (typingIntervalRef.current) {
-          clearInterval(typingIntervalRef.current);
-        }
+        clearTypingInterval();
         clearThread();
       };
     }
   }, [role]);
 
-  const handleRoleSelection = (selectedRole) => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, pdfLoading]);
+
+  const typeText = (text, setter, onComplete) => {
+    let typedText = '';
+    let idx = 0;
+    typingIntervalRef.current = setInterval(() => {
+      if (idx < text.length) {
+        typedText += text[idx];
+        setter(typedText);
+        idx++;
+      } else {
+        clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+        if (onComplete) onComplete();
+      }
+    }, typingVelocity);
+  };
+
+  const clearTypingInterval = () => {
     if (typingIntervalRef.current) {
       clearInterval(typingIntervalRef.current);
     }
+  };
+
+  const handleRoleSelection = (selectedRole) => {
+    clearTypingInterval();
     console.log('Role selected:', selectedRole);
     setRole(selectedRole);
     setTitle("Last Second Teacher - AI Worksheet Generator");
@@ -60,22 +66,26 @@ function Home() {
 
   const handleInputChange = event => {
     setInputText(event.target.value);
-    // console.log('Input text changed:', event.target.value);
   };
 
   const handleSubmit = async event => {
     event.preventDefault();
     if (inputText.trim() !== '') {
       const userMessage = `Me: ${inputText}`;
-      setMessages(messages => [...messages, { text: userMessage, sender: 'user' }]);
+      updateMessages({ text: userMessage, sender: 'user' });
       setHistory(history => [...history, userMessage]);
 
-      try {
-        const systemIndicator = { text: "...", sender: 'system', loading: true };
-        setMessages(messages => [...messages, systemIndicator]);
+      const systemIndicator = { text: "...", sender: 'system', loading: true };
+      updateMessages(systemIndicator);
 
-        console.log('Sending request to API:', { inputText, threadId, role });
-        const response = await fetch(`${apiUrl}/requireResponseOpenAI`, {
+      const apiPath = `${apiUrl}/requireResponseOpenAI`;
+      console.log('Sending request to API:', { inputText, threadId, role });
+      if (programMode === 'local') {
+        console.log('API path called:', apiPath);
+      }
+
+      try {
+        const response = await fetch(apiPath, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -86,42 +96,58 @@ function Home() {
 
         if (!response.ok) throw new Error('No response from system');
         const data = await response.json();
-        console.log('API response received:', data);
-
-        if (data && data.message) {
-          const systemMessage = (
-            <span>
-              <span className="system-label">System: </span>
-              <span className="system-text">{data.message}</span>
-            </span>
-          );
-          setMessages(messages => {
-            return messages.filter(msg => msg.text !== "...").concat({ text: systemMessage, sender: 'system' });
-          });
-          setHistory(history => [...history, `System: ${data.message}`]);
-        } else {
-          throw new Error('No valid response from system');
-        }
+        handleApiResponse(data);
       } catch (error) {
-        console.error("Error:", error);
-        const errorMessage = (
-          <span>
-            <span className="system-label">System: </span>
-            <span className="system-text">No Return from System. Please, try again later. Error: {error.message}</span>
-          </span>
-        );
-        setMessages(messages => messages.filter(msg => msg.text !== "...").concat({ text: errorMessage, sender: 'system', error: true }));
-        setHistory(history => [...history, `System: No Return from System. Please, try again later. Error: ${error.message}`]);
+        handleApiError(error);
       }
 
       setInputText('');
     }
   };
 
+  const handleApiResponse = (data) => {
+    if (data && data.message) {
+      const systemMessage = createSystemMessage(data.message);
+      updateMessages(systemMessage, true);
+      setHistory(history => [...history, `System: ${data.message}`]);
+    } else {
+      throw new Error('No valid response from system');
+    }
+  };
+
+  const handleApiError = (error) => {
+    console.error("Error:", error);
+    const errorMessage = createSystemMessage(`No Return from System. Please, try again later. Error: ${error.message}`, true);
+    updateMessages(errorMessage);
+    setHistory(history => [...history, `System: No Return from System. Please, try again later. Error: ${error.message}`]);
+  };
+
+  const createSystemMessage = (message, isError = false) => {
+    return {
+      text: (
+        <span>
+          <span className="system-label">System: </span>
+          <span className="system-text">{message}</span>
+        </span>
+      ),
+      sender: 'system',
+      error: isError
+    };
+  };
+
+  const updateMessages = (newMessage, removeLoading = false) => {
+    setMessages(messages => {
+      if (removeLoading) {
+        return messages.filter(msg => msg.text !== "...").concat(newMessage);
+      } else {
+        return messages.concat(newMessage);
+      }
+    });
+  };
+
   const clearThread = async () => {
     const oldThreadId = threadId;
-    const newThreadId = uuidv4(); // Generate a new thread ID
-    setThreadId(newThreadId);
+    setThreadId(uuidv4());
     setMessages([]);
     setHistory([]);
     setThreadCleared(true);
@@ -145,9 +171,14 @@ function Home() {
 
   const generatePDF = async () => {
     setPdfLoading(true);
+    const apiPath = `${apiUrl}/requireResponseOpenAI/generatePDF`;
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
+    if (programMode === 'local') {
+      console.log('API path called:', apiPath);
+    }
+
     try {
-      const response = await fetch(`${apiUrl}/requireResponseOpenAI/generatePDF`, {
+      const response = await fetch(apiPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -159,40 +190,42 @@ function Home() {
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(new Blob([blob]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'worksheet.pdf');
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode.removeChild(link);
+        triggerPDFDownload(url);
         console.log('PDF generated and download triggered');
 
-        const pdfMessage = (
-          <span>
-            <span className="system-label">System: </span>
-            <span className="system-text">PDF generated successfully. <a href={url} download="worksheet.pdf">Download PDF again</a></span>
-          </span>
+        const pdfMessage = createSystemMessage(
+          `PDF generated successfully. <a href="${url}" download="worksheet.pdf">Download PDF again</a>`
         );
-
-        setMessages(messages => messages.concat({ text: pdfMessage, sender: 'system' }));
+        updateMessages(pdfMessage);
         setHistory(history => [...history, 'System: PDF generated successfully.']);
-
       } else {
         throw new Error('Failed to generate PDF');
       }
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      const errorMessage = (
-        <span>
-          <span className="system-label">System: </span>
-          <span className="system-text">Error generating PDF. Please try again later. Error: {error.message}</span>
-        </span>
-      );
-      setMessages(messages => messages.concat({ text: errorMessage, sender: 'system', error: true }));
-      setHistory(history => [...history, `System: Error generating PDF. Please try again later. Error: ${error.message}`]);
+      handlePdfError(error);
     } finally {
       setPdfLoading(false);
     }
+  };
+
+  const triggerPDFDownload = (url) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'worksheet.pdf');
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode.removeChild(link);
+  };
+
+  const handlePdfError = (error) => {
+    console.error('Error generating PDF:', error);
+    const errorMessage = createSystemMessage(`Error generating PDF. Please try again later. Error: ${error.message}`, true);
+    updateMessages(errorMessage);
+    setHistory(history => [...history, `System: Error generating PDF. Please try again later. Error: ${error.message}`]);
+  };
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
@@ -214,20 +247,20 @@ function Home() {
                   <span>Generating PDF...</span>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
             <form onSubmit={handleSubmit} className="chat-input-form">
-                <div className="buttonFlex">
-                  <div className="flex twoItems">
-                    <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-                    <button type="submit">Send</button>
-                  </div>
-
-                  <div className="flex twoItems">
-                    <button type="button" onClick={generatePDF}>Generate PDF</button>
-                    <button type="button" onClick={clearThread}>Clear Thread</button>
-                  </div>
+              <div className="buttonFlex">
+                <div className="flex twoItems">
+                  <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
+                  <button type="submit">Send</button>
                 </div>
-              </form>
+                <div className="flex twoItems">
+                  <button type="button" onClick={generatePDF}>Generate PDF</button>
+                  <button type="button" onClick={clearThread}>Clear Thread</button>
+                </div>
+              </div>
+            </form>
           </div>
         </>
       ) : (
