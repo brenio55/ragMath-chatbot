@@ -144,7 +144,8 @@ html, body {
 
 
 .chat-input-form button {
-  padding: 10px 20px;
+  padding: 4px 21px;
+  font-size: 13px;
   /* margin-left: 10px; */
   background-color: #87ceeb;
   border: none;
