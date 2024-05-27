@@ -2,7 +2,7 @@ import express from 'express';
 import { createRequire } from "module";
 import { PDFDocument, rgb } from 'pdf-lib';
 import { OpenAI } from 'openai';
-import cors from 'cors';
+// import cors from 'cors';
 import fetch from 'node-fetch'; // Add this if you don't have fetch available globally
 import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs'; // Import fs to read local files
@@ -29,7 +29,10 @@ if (!apiKey) {
 
 const openAI = new OpenAI({ apiKey });
 
-app.options('*', cors())
+var cors = require('cors')
+
+app.use(express.urlencoded({extended:true}));
+app.use(cors())
 
 // Store thread information
 const threads = {};
