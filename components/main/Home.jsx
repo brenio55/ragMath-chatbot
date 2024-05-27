@@ -75,7 +75,7 @@ function Home() {
         setMessages(messages => [...messages, systemIndicator]);
 
         console.log('Sending request to API:', { inputText, threadId, role });
-        const response = await fetch(`${apiUrl}/requireResponseOpenAI`, {
+        const response = await fetch(`${apiUrl}requireResponseOpenAI`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -147,7 +147,7 @@ function Home() {
     setPdfLoading(true);
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
     try {
-      const response = await fetch(`${apiUrl}/requireResponseOpenAI/generatePDF`, {
+      const response = await fetch(`${apiUrl}requireResponseOpenAI/generatePDF`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
