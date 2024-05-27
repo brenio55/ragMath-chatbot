@@ -109,6 +109,7 @@ html, body {
   /* box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); */
   scroll-behavior: smooth;
   scrollbar-width: thin;
+  overflow-x: hidden;
 }
 
 .chat-messages::-webkit-scrollbar {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
-const apiUrl = import.meta.env.VITE_API_URL.replace('/requireResponseOpenAI', '');
+const apiUrl = import.meta.env.VITE_API_URL;
 const programMode = import.meta.env.VITE_PROGRAM_MODE; // Read the program mode
 
 const typingVelocity = 50; // Global typing speed, adjust as needed
@@ -75,7 +75,7 @@ function Home() {
         setMessages(messages => [...messages, systemIndicator]);
 
         console.log('Sending request to API:', { inputText, threadId, role });
-        const response = await fetch(`${apiUrl}requireResponseOpenAI`, {
+        const response = await fetch(`${apiUrl}/requireResponseOpenAI`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -147,7 +147,7 @@ function Home() {
     setPdfLoading(true);
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
     try {
-      const response = await fetch(`${apiUrl}requireResponseOpenAI/generatePDF`, {
+      const response = await fetch(`${apiUrl}/requireResponseOpenAI/generatePDF`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
