@@ -56,6 +56,27 @@ const openAI = new OpenAI({ apiKey });
 // Store thread information
 const threads = {};
 
+app.get('/api/requireResponseOpenAI', async (req, res) => {
+    console.log("Received request");
+    try{
+        res.status(200).json( {message: "GET Request successfully made to root API" });
+    }catch (error) {
+        res.status(500).json( {message: error });
+    }
+    
+});
+
+app.get('/api/requireResponseOpenAI/clearThread', async (req, res) => {
+    console.log("Received request");
+    res.status(200).json( {message: "GET Request successfully made to ClearThread API" });
+});
+
+app.get('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
+    console.log("Received request");
+    res.status(200).json( {message: "GET Request successfully made to generatePDF API" });
+});
+
+
 app.post('/api/requireResponseOpenAI', async (req, res) => {
     const { inputText, threadId, role } = req.body;
     console.log('Received request:', { inputText, threadId, role });
