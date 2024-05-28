@@ -166,6 +166,7 @@ function Home() {
       console.log('Thread cleared response:', await response.json());
     } catch (error) {
       console.log('Error clearing thread:', error);
+      
     }
   };
 
