@@ -78,7 +78,7 @@ function Home() {
       const systemIndicator = { text: "...", sender: 'system', loading: true };
       updateMessages(systemIndicator);
 
-      const apiPath = `${apiUrl}/requireResponseOpenAI`;
+      const apiPath = `${apiUrl}/require-chat`;
       console.log('Sending request to API:', { inputText, threadId, role });
       if (programMode === 'local') {
         console.log('API path called:', apiPath);
@@ -155,7 +155,7 @@ function Home() {
 
     console.log('Clearing thread:', programMode === 'local' ? oldThreadId : 'hidden');
     try {
-      const response = await fetch(`${apiUrl}/clearThread`, {
+      const response = await fetch(`${apiUrl}/clear-thread`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,7 +172,7 @@ function Home() {
 
   const generatePDF = async () => {
     setPdfLoading(true);
-    const apiPath = `${apiUrl}/generatePDF`;
+    const apiPath = `${apiUrl}/generate-pdf`;
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
     if (programMode === 'local') {
       console.log('API path called:', apiPath);
