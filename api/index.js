@@ -1,32 +1,28 @@
 import express from 'express';
-import { createRequire } from "module";
 import { PDFDocument, rgb } from 'pdf-lib';
 import { OpenAI } from 'openai';
 // import cors from 'cors';
-import fetch from 'node-fetch'; // Add this if you don't have fetch available globally
+import fetch from 'node-fetch';
 import fontkit from '@pdf-lib/fontkit';
-import fs from 'fs'; // Import fs to read local files
-import path from 'path'; // Import path to handle file paths
-import { fileURLToPath } from 'url'; // Import to define __dirname
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-const require = createRequire(import.meta.url);
+// Carregar variáveis de ambiente
+dotenv.config({ path: './../.env' });
 
-require('dotenv').config({ path: './../.env' });
-
-// Define __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const whitelist = [
-    '*'
-  ];
+const whitelist = ['*'];
 
-var app = express();
+const app = express();
 
-var cors = require('cors')
+import cors from 'cors';
 
-app.use(express.urlencoded({extended:true}));
-app.use(cors({origin: "*"}))
+app.use(express.urlencoded({ extended: true }));
+app.use(cors({ origin: '*' }));
 
 app.use(express.json());
 
@@ -34,15 +30,14 @@ app.use((req, res, next) => {
     const origin = req.get('referer');
     const isWhitelisted = whitelist.find((w) => origin && origin.includes(w));
     if (isWhitelisted) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-      res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization');
-      res.setHeader('Access-Control-Allow-Credentials', true);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization');
+        res.setHeader('Access-Control-Allow-Credentials', true);
     }
-    // Pass to next layer of middleware
     if (req.method === 'OPTIONS') res.sendStatus(200);
     else next();
-  });
+});
 
 const apiKey = process.env.VITE_LastSecondTeacherAPIKEY;
 console.log(apiKey);
@@ -53,29 +48,26 @@ if (!apiKey) {
 
 const openAI = new OpenAI({ apiKey });
 
-// Store thread information
 const threads = {};
 
 app.get('/api/requireResponseOpenAI', async (req, res) => {
     console.log("Received request");
-    try{
-        res.status(200).json( {message: "GET Request successfully made to root API" });
-    }catch (error) {
-        res.status(500).json( {message: error });
+    try {
+        res.status(200).json({ message: "GET Request successfully made to root API" });
+    } catch (error) {
+        res.status(500).json({ message: error });
     }
-    
 });
 
 app.get('/api/requireResponseOpenAI/clearThread', async (req, res) => {
     console.log("Received request");
-    res.status(200).json( {message: "GET Request successfully made to ClearThread API" });
+    res.status(200).json({ message: "GET Request successfully made to ClearThread API" });
 });
 
 app.get('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
     console.log("Received request");
-    res.status(200).json( {message: "GET Request successfully made to generatePDF API" });
+    res.status(200).json({ message: "GET Request successfully made to generatePDF API" });
 });
-
 
 app.post('/api/requireResponseOpenAI', async (req, res) => {
     const { inputText, threadId, role } = req.body;
@@ -100,10 +92,9 @@ app.post('/api/requireResponseOpenAI', async (req, res) => {
         const systemMessage = response.choices[0].message;
         console.log('System response:', systemMessage);
 
-        // Save system response in thread
         if (!threads[threadId]) {
             threads[threadId] = [
-                { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet. Create a short response for that like "sure, I can create a worksheet about that. Please click the button "Generate PDF" so that we can start."` }
+                { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.` }
             ];
         }
         threads[threadId].push(systemMessage);
@@ -142,7 +133,6 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
 
         const conversationHistory = messages.map(msg => `${msg.role === 'user' ? 'User' : 'System'}: ${msg.content}`).join('\n');
 
-        // Generate worksheet content based on the conversation history
         const response = await openAI.chat.completions.create({
             model: "gpt-4",
             max_tokens: 1000,
@@ -163,7 +153,6 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         const { width, height } = page.getSize();
         const fontSize = 12;
 
-        // Read the Ubuntu font file from the public directory
         const fontPath = path.resolve(__dirname, '../public/Ubuntu-Regular.ttf');
         const fontBytes = fs.readFileSync(fontPath);
         const ubuntuFont = await pdfDoc.embedFont(fontBytes);
@@ -181,7 +170,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
 
             for (let i = 1; i < words.length; i++) {
                 const word = words[i];
-                const width = font.widthOfTextAtSize(`${currentLine} ${word}`, fontSize);
+                const width = ubuntuFont.widthOfTextAtSize(`${currentLine} ${word}`, fontSize);
                 if (width < maxWidth) {
                     currentLine += ` ${word}`;
                 } else {
@@ -227,7 +216,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
                 y -= fontSize + 5;
             }
 
-            y -= 20; // Add some space before starting the worksheet
+            y -= 20;
         }
 
         for (const paragraph of paragraphs) {
@@ -271,7 +260,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
                     y,
                     size: fontSize,
                     font: ubuntuFont,
-                    color: rgb(0.5, 0.5, 0.5), // Light gray color for answers
+                    color: rgb(0.5, 0.5, 0.5),
                 });
                 y -= fontSize + 5;
             }
@@ -286,7 +275,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         });
 
         const pdfBytes = await pdfDoc.save();
-        
+
         res.setHeader('Content-Disposition', 'attachment; filename=worksheet.pdf');
         res.setHeader('Content-Type', 'application/pdf');
         res.send(Buffer.from(pdfBytes));
@@ -303,4 +292,4 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-module.exports = app;
+export default app;
