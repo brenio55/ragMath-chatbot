@@ -155,7 +155,7 @@ function Home() {
 
     console.log('Clearing thread:', programMode === 'local' ? oldThreadId : 'hidden');
     try {
-      const response = await fetch(`${apiUrl}/requireResponseOpenAI/clearThread`, {
+      const response = await fetch(`${apiUrl}/clearThread`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,7 +172,7 @@ function Home() {
 
   const generatePDF = async () => {
     setPdfLoading(true);
-    const apiPath = `${apiUrl}/requireResponseOpenAI/generatePDF`;
+    const apiPath = `${apiUrl}/generatePDF`;
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
     if (programMode === 'local') {
       console.log('API path called:', apiPath);

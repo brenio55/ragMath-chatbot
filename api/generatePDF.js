@@ -1,23 +1,29 @@
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
 import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
+import OpenAI from 'openai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const threads = {}
+const apiKey = process.env.VITE_LastSecondTeacherAPIKEY;
+if (!apiKey) {
+    console.error("API key not found. Please make sure to set the VITE_LastSecondTeacherAPIKEY environment variable.");
+    process.exit(1);
+}
 
-app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
-    const { threadId, role } = req.body;
+const threads = {}
+const openAI = new OpenAI({ apiKey });
+
+export async function POST(req) {
+    const { threadId, role } = await req.body;
     console.log('Generating PDF for thread:', threadId);
 
     try {
         const messages = threads[threadId];
-        if (!messages) {
-            throw new Error("Thread not found");
-        }
+        if (!messages) throw new Error("Thread not found");
         console.log('Messages to be included in PDF:', messages);
 
         const conversationHistory = messages.map(msg => `${msg.role === 'user' ? 'User' : 'System'}: ${msg.content}`).join('\n');
@@ -42,7 +48,7 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         const { width, height } = page.getSize();
         const fontSize = 12;
 
-        const fontPath = path.resolve(__dirname, '../public/Ubuntu-Regular.ttf');
+        const fontPath = resolve(__dirname, '../public/Ubuntu-Regular.ttf');
         const fontBytes = fs.readFileSync(fontPath);
         const ubuntuFont = await pdfDoc.embedFont(fontBytes);
 
@@ -174,4 +180,4 @@ app.post('/api/requireResponseOpenAI/generatePDF', async (req, res) => {
         console.error("Error generating PDF:", error.message);
         res.status(500).send({ error: error.message });
     }
-});
+}

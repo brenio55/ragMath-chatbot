@@ -1,5 +1,3 @@
-import {} from 'vercel';
-
 // const { threadId } = req.body;
 // console.log('Clearing thread:', threadId);
 
@@ -12,9 +10,12 @@ import {} from 'vercel';
 //     res.status(202).send({ error: "Thread not found" });
 // }
 
-export function POST(req, res) {
-    res.send({
-        status: 200,
-        message: "hi from vercel",
-    });
+/**
+ * @param {Request} request
+ * */
+export function POST(request) {
+    const status = 200;
+    const message = "hi from vercel";
+
+    return new Response(message, { status });
 }
