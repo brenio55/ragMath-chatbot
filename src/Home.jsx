@@ -137,8 +137,10 @@ function Home() {
   const updateMessages = (newMessage, removeLoading = false) => {
     setMessages(messages => {
       if (removeLoading) {
+        console.log(newMessage.text, ' concat');
         return messages.filter(msg => msg.text !== "...").concat(newMessage);
       } else {
+        console.log(newMessage.text, ' remove concat');
         return messages.concat(newMessage);
       }
     });
@@ -166,18 +168,17 @@ function Home() {
     setPdfLoading(true);
     const apiPath = `${apiUrl}/generate-pdf`;
     console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
-    if (programMode === 'local') {
-      console.log('API path called:', apiPath);
-    }
+    if (programMode === 'local') console.log('API path called:', apiPath);
 
     try {
+      const thread = messages.filter(message => typeof message.text === 'string');
       const response = await fetch(apiPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
         },
-        body: JSON.stringify({ thread: threads[threadId] })
+        body: JSON.stringify({ thread })
       });
 
       if (response.ok) {
