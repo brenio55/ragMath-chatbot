@@ -3,9 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
 const apiUrl = import.meta.env.VITE_API_URL;
-const programMode = import.meta.env.VITE_PROGRAM_MODE; // Read the program mode
+const programMode = import.meta.env.VITE_PROGRAM_MODE;
 
-const typingVelocity = 50; // Global typing speed, adjust as needed
+const typingVelocity = 50;
 const threads = {}
 
 function Home() {
@@ -15,7 +15,7 @@ function Home() {
   const [subTitle, setSubTitle] = useState('');
   const [history, setHistory] = useState([]);
   const [threadCleared, setThreadCleared] = useState(false);
-  const [threadId, setThreadId] = useState(uuidv4()); // Generate a new thread ID
+  const [threadId, setThreadId] = useState(uuidv4());
   const [role, setRole] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const typingIntervalRef = useRef(null);
