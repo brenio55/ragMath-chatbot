@@ -8,6 +8,14 @@ if (!apiKey) {
 
 const openAI = new OpenAI({ apiKey });
 
+
+const cors = {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
+    'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
+}
+
 const threads = {};
 
 async function logic({ threadId, role, inputText }) {
@@ -49,10 +57,10 @@ export async function POST(req) {
     try {
         const object = await logic(body);
         const data = JSON.stringify(object)
-        return new Response(data, { status: 200 });
+        return new Response(data, { status: 200, headers: cors });
     } catch (error) {
         console.error("Error: ", error.message);
         const err = JSON.stringify({ error: error.message });
-        return new Response(err, { status: 500 })
+        return new Response(err, { status: 500, headers: cors })
     }
 };

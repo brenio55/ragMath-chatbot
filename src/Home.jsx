@@ -137,10 +137,8 @@ function Home() {
   const updateMessages = (newMessage, removeLoading = false) => {
     setMessages(messages => {
       if (removeLoading) {
-        console.log(newMessage.text, ' concat');
         return messages.filter(msg => msg.text !== "...").concat(newMessage);
       } else {
-        console.log(newMessage.text, ' remove concat');
         return messages.concat(newMessage);
       }
     });

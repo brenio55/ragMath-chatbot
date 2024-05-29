@@ -9,6 +9,13 @@ import OpenAI from 'openai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const cors = {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
+    'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
+}
+
 const apiKey = process.env.VITE_LastSecondTeacherAPIKEY;
 if (!apiKey) {
     console.error("API key not found. Please make sure to set the VITE_LastSecondTeacherAPIKEY environment variable.");
@@ -183,12 +190,13 @@ export async function POST(req) {
             headers: {
                 'Content-Type': 'application/pdf',
                 'Content-Disposition': 'attachment; filename=worksheet.pdf',
+                ...cors
             },
         });
 
     } catch (error) {
         console.error("Error: ", error.message);
         const err = JSON.stringify({ error: error.message });
-        return new Response(err, { status: 500 })
+        return new Response(err, { status: 500, headers: cors })
     }
 }
