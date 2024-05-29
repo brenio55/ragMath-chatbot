@@ -6,6 +6,7 @@ const apiUrl = import.meta.env.VITE_API_URL;
 const programMode = import.meta.env.VITE_PROGRAM_MODE; // Read the program mode
 
 const typingVelocity = 50; // Global typing speed, adjust as needed
+const threads = {}
 
 function Home() {
   const [messages, setMessages] = useState([]);
@@ -80,9 +81,7 @@ function Home() {
 
       const apiPath = `${apiUrl}/require-chat`;
       console.log('Sending request to API:', { inputText, threadId, role });
-      if (programMode === 'local') {
-        console.log('API path called:', apiPath);
-      }
+      if (programMode === 'local') console.log('API path called:', apiPath);
 
       try {
         const response = await fetch(apiPath, {
@@ -154,19 +153,12 @@ function Home() {
     setTimeout(() => setThreadCleared(false), 3000);
 
     console.log('Clearing thread:', programMode === 'local' ? oldThreadId : 'hidden');
-    try {
-      const response = await fetch(`${apiUrl}/clear-thread`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
-        },
-        body: JSON.stringify({ threadId: oldThreadId }),
-      });
-      console.log('Thread cleared response:', await response.json());
-    } catch (error) {
-      console.log('Error clearing thread:', error);
-      
+
+    if (threads[threadId]) {
+        delete threads[threadId];
+        console.log('Thread cleared successfully:', threadId);
+    } else {
+        console.error('Thread not found:', threadId);
     }
   };
 
@@ -185,7 +177,7 @@ function Home() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
         },
-        body: JSON.stringify({ threadId }),
+        body: JSON.stringify({ thread: threads[threadId] })
       });
 
       if (response.ok) {

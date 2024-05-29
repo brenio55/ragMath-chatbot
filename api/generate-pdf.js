@@ -1,8 +1,9 @@
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+
 import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import fs from 'fs';
 import OpenAI from 'openai';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,15 +15,12 @@ if (!apiKey) {
     process.exit(1);
 }
 
-const threads = {}
 const openAI = new OpenAI({ apiKey });
 
-async function logic({ threadId, role }) {
-    const messages = threads[threadId];
-    if (!messages) throw new Error("Thread not found");
-    console.log('Messages to be included in PDF:', messages);
+async function logic({ thread, role }) {
+    console.log('Messages to be included in PDF:', thread);
 
-    const conversationHistory = messages.map(msg => `${msg.role === 'user' ? 'User' : 'System'}: ${msg.content}`).join('\n');
+    const conversationHistory = thread.map(message => `${message.role === 'user' ? 'User' : 'System'}: ${message.content}`).join('\n');
 
     const response = await openAI.chat.completions.create({
         model: "gpt-4",
@@ -45,7 +43,7 @@ async function logic({ threadId, role }) {
     const fontSize = 12;
 
     const fontPath = resolve(__dirname, '../public/Ubuntu-Regular.ttf');
-    const fontBytes = fs.readFileSync(fontPath);
+    const fontBytes = readFileSync(fontPath);
     const ubuntuFont = await pdfDoc.embedFont(fontBytes);
 
     page.setFont(ubuntuFont);
