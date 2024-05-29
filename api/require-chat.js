@@ -16,33 +16,17 @@ const cors = {
     'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
 }
 
-const threads = {};
-
-async function logic({ threadId, role, inputText }) {
-    const messages = threads[threadId] || [
-        { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, tell them to press the 'Generate PDF' button to create the worksheet.` }
-    ];
-    console.log('Current thread messages:', messages);
-
-    messages.push({ "role": "user", "content": inputText });
-    console.log('Updated thread messages:', messages);
-
+async function logic({ thread }) {
+    if (!thread[0]) thread[0] = { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.` }
     const response = await openAI.chat.completions.create({
         model: "gpt-4",
         max_tokens: 1000,
         temperature: 1,
-        messages: messages
+        messages: thread
     });
 
     const systemMessage = response.choices[0].message;
     console.log('System response:', systemMessage);
-
-    if (!threads[threadId]) {
-        threads[threadId] = [
-            { "role": "system", "content": `You are interacting with a user who is a ${role}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.` }
-        ];
-    }
-    threads[threadId].push(systemMessage);
 
     return { message: systemMessage.content };
 }

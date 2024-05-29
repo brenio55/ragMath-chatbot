@@ -6,7 +6,7 @@ const apiUrl = import.meta.env.VITE_API_URL;
 const programMode = import.meta.env.VITE_PROGRAM_MODE;
 
 const typingVelocity = 50;
-const threads = {}
+const threads = [];
 
 function Home() {
   const [messages, setMessages] = useState([]);
@@ -16,20 +16,21 @@ function Home() {
   const [history, setHistory] = useState([]);
   const [threadCleared, setThreadCleared] = useState(false);
   const [threadId, setThreadId] = useState(uuidv4());
-  const [role, setRole] = useState('');
+  const [work, setWork] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const typingIntervalRef = useRef(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    if (!role) {
+    if (!work) {
+      // clearThread();
       typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
       return () => {
         clearTypingInterval();
         clearThread();
       };
     }
-  }, [role]);
+  }, [work]);
 
   useEffect(() => {
     scrollToBottom();
@@ -52,15 +53,13 @@ function Home() {
   };
 
   const clearTypingInterval = () => {
-    if (typingIntervalRef.current) {
-      clearInterval(typingIntervalRef.current);
-    }
+    if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
   };
 
   const handleRoleSelection = (selectedRole) => {
     clearTypingInterval();
     console.log('Role selected:', selectedRole);
-    setRole(selectedRole);
+    setWork(selectedRole);
     setTitle("Last Second Teacher - AI Worksheet Generator");
     setSubTitle("Let me know what grade you're looking for me to create :)");
   };
@@ -73,14 +72,14 @@ function Home() {
     event.preventDefault();
     if (inputText.trim() !== '') {
       const userMessage = `Me: ${inputText}`;
-      updateMessages({ text: userMessage, sender: 'user' });
+      updateMessages({ text: userMessage, content: userMessage, role: 'user' });
       setHistory(history => [...history, userMessage]);
 
-      const systemIndicator = { text: "...", sender: 'system', loading: true };
+      const systemIndicator = { text: "...", role: 'system', loading: true };
       updateMessages(systemIndicator);
 
       const apiPath = `${apiUrl}/require-chat`;
-      console.log('Sending request to API:', { inputText, threadId, role });
+      console.log('Sending request to API:', { thread: messages.filter((value) => value.text !== '...') });
       if (programMode === 'local') console.log('API path called:', apiPath);
 
       try {
@@ -90,7 +89,7 @@ function Home() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
           },
-          body: JSON.stringify({ inputText, threadId, role }),
+          body: JSON.stringify({ thread: messages.filter((value) => value.text !== '...') }),
         });
 
         if (!response.ok) throw new Error('No response from system');
@@ -129,12 +128,15 @@ function Home() {
           <span className="system-text">{message}</span>
         </span>
       ),
-      sender: 'system',
+      content: 'System: ' + message,
+      role: 'system',
       error: isError
     };
   };
 
   const updateMessages = (newMessage, removeLoading = false) => {
+    if (newMessage.text !== "...") threads.push(newMessage);
+
     setMessages(messages => {
       if (removeLoading) {
         return messages.filter(msg => msg.text !== "...").concat(newMessage);
@@ -145,21 +147,19 @@ function Home() {
   };
 
   const clearThread = async () => {
-    const oldThreadId = threadId;
     setThreadId(uuidv4());
     setMessages([]);
     setHistory([]);
     setThreadCleared(true);
     setTimeout(() => setThreadCleared(false), 3000);
 
-    console.log('Clearing thread:', programMode === 'local' ? oldThreadId : 'hidden');
+    console.log('Clearing thread:', programMode === 'local' ? threadId : 'hidden');
 
-    if (threads[threadId]) {
-        delete threads[threadId];
-        console.log('Thread cleared successfully:', threadId);
-    } else {
-        console.error('Thread not found:', threadId);
-    }
+    threads.length = 0;
+    threads.push({
+      "role": "system",
+      "content": `You are interacting with a user who is a ${work}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.`
+    });
   };
 
   const generatePDF = async () => {
@@ -222,14 +222,14 @@ function Home() {
 
   return (
     <div className="home">
-      {role ? (
+      {work ? (
         <>
           <h2>{title}</h2>
           <h3>{subTitle}</h3>
           <div className="chat-container">
             <div className="chat-messages">
               {messages.map((message, index) => (
-                <div key={index} className={`message ${message.sender}${message.error ? " error" : ""}`}>
+                <div key={index} className={`message ${message.role}${message.error ? " error" : ""}`}>
                   {message.loading ? <LoadingDots /> : message.text}
                 </div>
               ))}
