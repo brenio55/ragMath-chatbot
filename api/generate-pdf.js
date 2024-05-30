@@ -9,7 +9,7 @@ import OpenAI from 'openai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const maxDuration = 50;
+export const maxDuration = 60;
 const cors = {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Origin': '*',
