@@ -23,7 +23,6 @@ function Home() {
 
   useEffect(() => {
     if (!work) {
-      // clearThread();
       typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
       return () => {
         clearTypingInterval();
@@ -62,6 +61,12 @@ function Home() {
     setWork(selectedRole);
     setTitle("Last Second Teacher - AI Worksheet Generator");
     setSubTitle("Let me know what grade you're looking for me to create :)");
+
+    // Add initial system message to threads
+    threads.push({
+      role: 'system',
+      content: `You are interacting with a user who is a ${selectedRole}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.`
+    });
   };
 
   const handleInputChange = event => {
@@ -79,7 +84,7 @@ function Home() {
       updateMessages(systemIndicator);
 
       const apiPath = `${apiUrl}/require-chat`;
-      console.log('Sending request to API:', { thread: messages.filter((value) => value.text !== '...') });
+      console.log('Sending request to API:', { thread: threads });
       if (programMode === 'local') console.log('API path called:', apiPath);
 
       try {
@@ -89,7 +94,7 @@ function Home() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
           },
-          body: JSON.stringify({ thread: messages.filter((value) => value.text !== '...') }),
+          body: JSON.stringify({ thread: threads }),
         });
 
         if (!response.ok) throw new Error('No response from system');
@@ -108,6 +113,9 @@ function Home() {
       const systemMessage = createSystemMessage(data.message);
       updateMessages(systemMessage, true);
       setHistory(history => [...history, `System: ${data.message}`]);
+
+      // Update threads with the system response
+      threads.push({ role: 'system', content: data.message });
     } else {
       throw new Error('No valid response from system');
     }
@@ -118,6 +126,9 @@ function Home() {
     const errorMessage = createSystemMessage(`No Return from System. Please, try again later. Error: ${error.message}`, true);
     updateMessages(errorMessage);
     setHistory(history => [...history, `System: No Return from System. Please, try again later. Error: ${error.message}`]);
+
+    // Update threads with the error message
+    threads.push({ role: 'system', content: `No Return from System. Please, try again later. Error: ${error.message}` });
   };
 
   const createSystemMessage = (message, isError = false) => {
@@ -169,14 +180,13 @@ function Home() {
     if (programMode === 'local') console.log('API path called:', apiPath);
 
     try {
-      const thread = messages.filter(message => typeof message.text === 'string');
       const response = await fetch(apiPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
         },
-        body: JSON.stringify({ thread })
+        body: JSON.stringify({ thread: threads })
       });
 
       if (response.ok) {
