@@ -1,9 +1,10 @@
-const express = require('express');
-const cors = require('cors');
+import express from 'express';
+import cors from 'cors';
 const app = express();
 const port = 5000;
 
-const kbRoutes = require('./routes/kbRoutes');
+
+import kbRoutes from './routes/kbRoutes.js';
 
 app.use(cors());
 
@@ -18,4 +19,4 @@ app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
 })
 
-module.exports = app
+export default app;
