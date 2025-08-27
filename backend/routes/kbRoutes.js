@@ -9,8 +9,8 @@ const config = {
     }
 }
 
-let googleApiKey = process.env.GOOGLE_API_KEY;
-console.log("Google API Key:", googleApiKey);
+
+
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { 
     START, END,
@@ -20,6 +20,8 @@ import {
 
 dotenv.config();
 
+let googleApiKey = process.env.GOOGLE_API_KEY;
+console.log("Google API Key:", googleApiKey);
 //
 //FLOW:
 //1 - User send a request to the model with a question
