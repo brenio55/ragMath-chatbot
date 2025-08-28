@@ -8,15 +8,11 @@ import {
     MessagesAnnotation,
     StateGraph,
 } from "@langchain/langgraph";
-import { MessagesPlaceholder } from "@langchain/core/prompts";
+import { MessagesPlaceholder, ChatPromptTemplate } from "@langchain/core/prompts";
 
 import Firecrawl from "@mendable/firecrawl-js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
-import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { createRetrievalChain } from "langchain/chains/retrieval";
-import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Document } from "langchain/document";
 
@@ -125,31 +121,8 @@ class KBModel {
     async initLangchainGraph() {
         const self = this; // Capture 'this' for use inside nodes
 
-        const contextualizeQPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", "Given a chat history and the latest user question \n" +
-                "which might reference context in the chat history, \n" +
-                "formulate a standalone question which can be understood without \n" +
-                "the chat history. Do NOT answer the question, just reformulate \n" +
-                "it if necessary and otherwise return it as is." ],
-            new MessagesPlaceholder("chat_history"),
-            [ "human", "{input}" ],
-        ]);
-
         const routerPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", `Você é um assistente útil e um especialista em roteamento. Sua **única e exclusiva** tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. 
-            
-            **Responda APENAS com a decisão formatada, sem nenhuma outra conversa ou texto.**
-            
-            **Opções de Decisão:**
-            1.  **WEB_SEARCH <URL_MAIS_RELEVANTE>**: Use esta opção **apenas** se a pergunta do usuário NECESSITA de informações ESPECÍFICAS de um site que **com certeza** pode ser encontrado no sitemap fornecido. A URL deve ser a mais relevante e precisa do sitemap para a pergunta.
-            2.  **ANSWER_DIRECTLY**: Use esta opção se a pergunta pode ser respondida com conhecimento geral ou se NÃO houver uma URL claramente relevante no sitemap para a pergunta.
-            
-            **Exemplos de Formato de Saída (APENAS UM DESSES):**
-            - WEB_SEARCH https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay
-            - ANSWER_DIRECTLY
-            
-            Sitemap URLs disponíveis para consulta:
-            {sitemap_urls}` ],
+            [ "system", "Você é um assistente útil e um especialista em roteamento. Sua única e exclusiva tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplos de resposta válida: {{\"routerDecision\":\"WEB_SEARCH\",\"message\":\"https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay\"}} ou {{\"routerDecision\":\"ANSWER_DIRECTLY\",\"message\":\"A InfinitePay oferece diversas soluções de pagamento para o seu negócio.\"}} Opções de Decisão: 1. WEB_SEARCH: Use segit a pergunta NECESSITA de informações ESPECÍFICAS de um site que pode ser encontrado no sitemap. O 'message' DEVE ser a URL mais relevante. 2. ANSWER_DIRECTLY: Use se a pergunta pode ser respondida com conhecimento geral. O 'message' DEVE ser a resposta direta. Sitemap URLs disponíveis: {sitemap_urls} Suas respostas devem prioritariamente serem baseadas no sitemap, sempre preferencialmente pesquisando o assunto de acordo com o que você vê nos títulos do sitemap. Caso não encontre nada que possa dar match no site map, só assim responda diretamente." ],
             new MessagesPlaceholder("chat_history"),
             [ "human", "{input}" ],
         ]);
@@ -166,13 +139,32 @@ class KBModel {
 
             const response = await llm.invoke(routePromptWithSitemap);
             console.log("Raw router LLM response:", response.content);
+            console.log("Response type:", typeof response.content);
+            console.log("Response length:", response.content.length);
+            
             const parsedDecision = self.parseRouterDecision(response.content);
-            console.log("Parsed router decision:", parsedDecision.route);
+            console.log("Parsed router decision:", parsedDecision);
 
-            if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.url) {
-                return { messages: [response], route: parsedDecision.route, url_to_scrape: parsedDecision.url };
+            if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
+                return { 
+                    messages: [...state.messages, response], 
+                    route: parsedDecision.route, 
+                    url_to_scrape: parsedDecision.message 
+                };
+            } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
+                return { 
+                    messages: [...state.messages, response], 
+                    route: parsedDecision.route, 
+                    direct_answer_message: parsedDecision.message 
+                };
             } else {
-                return { messages: [response], route: "ANSWER_DIRECTLY" }; // Fallback to ANSWER_DIRECTLY
+                // Fallback for unexpected or missing information
+                console.error("Unexpected router decision format or missing message:", parsedDecision);
+                return { 
+                    messages: [...state.messages, response], 
+                    route: "ANSWER_DIRECTLY", 
+                    direct_answer_message: "Não foi possível determinar uma resposta clara no momento." 
+                };
             }
         };
 
@@ -185,44 +177,62 @@ class KBModel {
             const currentVectorstore = await self.scrapeAndVectorize(urlToScrape ? [urlToScrape] : []);
             if (!currentVectorstore || !urlToScrape) {
                 // Fallback if scraping failed or no URL was provided by router
-                return { messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], sourceDocuments: [] };
+                return { 
+                    messages: [...state.messages, new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
+                    sourceDocuments: [] 
+                };
             }
 
-            const historyAwareRetriever = await createHistoryAwareRetriever({
-                llm: llm,
-                retriever: currentVectorstore.asRetriever(),
-                rephrasePrompt: contextualizeQPrompt,
-            });
+            // Use a simpler approach without historyAwareRetriever
+            const retriever = currentVectorstore.asRetriever();
+            const docs = await retriever.getRelevantDocuments(state.messages[state.messages.length - 1].content);
+            
+            if (docs.length === 0) {
+                return { 
+                    messages: [...state.messages, new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
+                    sourceDocuments: [] 
+                };
+            }
 
-            const qaPrompt = ChatPromptTemplate.fromMessages([
-                [ "system", "Answer the user's questions based on the below context:\n\n{context}\n\nIf the answer is not in the context, say that you couldn't find relevant information in the provided sources. Do not make up an answer." ],
-                new MessagesPlaceholder("chat_history"),
-                [ "human", "{input}" ],
-            ]);
+            // Create a simple prompt for the LLM
+            const context = docs.map(doc => doc.pageContent).join('\n\n');
+            const prompt = `Com base no contexto fornecido abaixo, responda à pergunta do usuário de forma clara e precisa. Se a resposta não estiver no contexto, diga que não tem informações suficientes.
 
-            const qaChain = await createStuffDocumentsChain({
-                llm: llm,
-                prompt: qaPrompt,
-            });
+Contexto:
+${context}
 
-            const ragChain = await createRetrievalChain({
-                retriever: historyAwareRetriever,
-                combineDocsChain: qaChain,
-            });
-            const response = await ragChain.invoke({ input: state.messages[state.messages.length - 1].content, chat_history: state.messages.slice(0, -1) });
-            return { messages: [new AIMessage(response.answer)], sourceDocuments: response.context };
+Pergunta: ${state.messages[state.messages.length - 1].content}
+
+Resposta:`;
+
+            const response = await llm.invoke(prompt);
+            return { 
+                messages: [...state.messages, new AIMessage(response.content)], 
+                sourceDocuments: docs 
+            };
         };
 
-        const answerDirectlyPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", "Você é um assistente útil. Por favor, responda à pergunta do usuário abaixo usando seu conhecimento geral, sem mencionar fontes externas ou a base de conhecimento. Se você não souber a resposta, diga que não tem informações sobre o assunto." ],
-            [ "human", "{input}" ],
-        ]);
-
         const answerDirectly = async (state) => {
-            // Use a versão da pergunta que não inclui o histórico de chat para evitar repetição
-            const userQuestion = state.messages[state.messages.length - 1].content;
-            const response = await llm.invoke(await answerDirectlyPrompt.formatMessages({ input: userQuestion }));
-            return { messages: [new AIMessage(response.content)], sourceDocuments: [] };
+            const directAnswerMessage = state.direct_answer_message;
+            if (directAnswerMessage) {
+                return { 
+                    messages: [...state.messages, new AIMessage(directAnswerMessage)], 
+                    sourceDocuments: [] 
+                };
+            } else {
+                // Fallback if for some reason direct_answer_message is not available
+                const userQuestion = state.messages[state.messages.length - 1].content;
+                const prompt = `Você é um assistente útil. Por favor, responda à pergunta do usuário abaixo usando seu conhecimento geral, sem mencionar fontes externas ou a base de conhecimento. Se você não souber a resposta, diga que não tem informações sobre o assunto.
+
+Pergunta: ${userQuestion}
+
+Resposta:`;
+                const response = await llm.invoke(prompt);
+                return { 
+                    messages: [...state.messages, new AIMessage(response.content)], 
+                    sourceDocuments: [] 
+                };
+            }
         };
 
         const workflow = new StateGraph(MessagesAnnotation)
@@ -233,10 +243,15 @@ class KBModel {
             .addConditionalEdges(
                 "routeQuestion",
                 (state) => {
-                    const lastMessage = state.messages[state.messages.length - 1];
-                    const decision = lastMessage.content.trim().split(/\s+/);
-                    console.log("Router decision in conditional edge:", decision[0]);
-                    return decision[0];
+                    // Check if we have route information in the state
+                    if (state.route === "WEB_SEARCH") {
+                        return "WEB_SEARCH";
+                    } else if (state.route === "ANSWER_DIRECTLY") {
+                        return "ANSWER_DIRECTLY";
+                    } else {
+                        // Fallback to ANSWER_DIRECTLY if no route is determined
+                        return "ANSWER_DIRECTLY";
+                    }
                 },
                 {
                     "WEB_SEARCH": "retrieveAndAnswer",
@@ -258,9 +273,17 @@ class KBModel {
             recursionLimit: 50,
         };
 
+        console.log("Invoking graph with messages:", messages);
+
         // The StateGraph expects an initial state, which includes the messages
         const initialState = { messages: messages };
+
+
+        console.log("Invoking graph with initial state:", initialState);
+
         const result = await appGraph.invoke(initialState, config);
+
+        console.log("Graph invocation result:", result);
 
         // The result from LangGraph is an object containing the final state
         // We need to extract the messages and sourceDocuments from it.
@@ -274,15 +297,44 @@ class KBModel {
         return new HumanMessage(content);
     }
 
-    parseRouterDecision(llmOutput) {
-        const trimmedOutput = llmOutput.trim();
-        const parts = trimmedOutput.split(/\s+/);
+    getAIMessage(content) {
+        return new AIMessage(content);
+    }
 
-        if (parts[0] === "WEB_SEARCH" && parts.length > 1) {
-            return { route: "WEB_SEARCH", url: parts[1] };
-        } else {
-            // Default to ANSWER_DIRECTLY if not explicitly WEB_SEARCH with a URL
-            return { route: "ANSWER_DIRECTLY", url: undefined };
+    parseRouterDecision(llmOutput) {
+        try {
+            // Clean the output to extract only the JSON part
+            let cleanedOutput = llmOutput.trim();
+            
+            // Remove markdown formatting if present
+            if (cleanedOutput.includes('```json')) {
+                cleanedOutput = cleanedOutput.split('```json')[1];
+            }
+            if (cleanedOutput.includes('```')) {
+                cleanedOutput = cleanedOutput.split('```')[0];
+            }
+            
+            // Remove any text before the first { and after the last }
+            const firstBrace = cleanedOutput.indexOf('{');
+            const lastBrace = cleanedOutput.lastIndexOf('}');
+            
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                cleanedOutput = cleanedOutput.substring(firstBrace, lastBrace + 1);
+            }
+            
+            // Try to parse the cleaned JSON
+            const decision = JSON.parse(cleanedOutput);
+            
+            if (decision.routerDecision && decision.message !== undefined) {
+                return { route: decision.routerDecision, message: decision.message };
+            } else {
+                console.error("Invalid JSON structure for router decision:", decision);
+                return { route: "ANSWER_DIRECTLY", message: "Erro ao processar a decisão do roteador." };
+            }
+        } catch (error) {
+            console.error("Error parsing router decision JSON:", error, "Raw output:", llmOutput);
+            console.error("Cleaned output attempt:", llmOutput.trim());
+            return { route: "ANSWER_DIRECTLY", message: "Erro interno ao rotear a pergunta." };
         }
     }
 }
