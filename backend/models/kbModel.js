@@ -136,13 +136,17 @@ class KBModel {
         ]);
 
         const routerPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", `Você é um assistente útil e um especialista em roteamento. Sua única tarefa é analisar a pergunta do usuário e o histórico de chat e decidir a MELHOR rota a seguir. 
+            [ "system", `Você é um assistente útil e um especialista em roteamento. Sua **única e exclusiva** tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. 
             
-            **Regras para Decisão:**
-            1. Se a pergunta do usuário NECESSITA de informações de um site (provavelmente encontrado no sitemap), responda EXATAMENTE com: "WEB_SEARCH <URL_MAIS_RELEVANTE>"
-            2. Se a pergunta pode ser respondida com conhecimento geral ou não há uma URL relevante óbvia no sitemap, responda EXATAMENTE com: "ANSWER_DIRECTLY"
+            **Responda APENAS com a decisão formatada, sem nenhuma outra conversa ou texto.**
             
-            **NÃO** adicione nenhuma outra informação ou conversa na sua resposta. APENAS a decisão formatada.
+            **Opções de Decisão:**
+            1.  **WEB_SEARCH <URL_MAIS_RELEVANTE>**: Use esta opção **apenas** se a pergunta do usuário NECESSITA de informações ESPECÍFICAS de um site que **com certeza** pode ser encontrado no sitemap fornecido. A URL deve ser a mais relevante e precisa do sitemap para a pergunta.
+            2.  **ANSWER_DIRECTLY**: Use esta opção se a pergunta pode ser respondida com conhecimento geral ou se NÃO houver uma URL claramente relevante no sitemap para a pergunta.
+            
+            **Exemplos de Formato de Saída (APENAS UM DESSES):**
+            - WEB_SEARCH https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay
+            - ANSWER_DIRECTLY
             
             Sitemap URLs disponíveis para consulta:
             {sitemap_urls}` ],
@@ -173,12 +177,15 @@ class KBModel {
         };
 
         const retrieveAndAnswer = async (state) => {
-            // If we are coming from a web search, state.url_to_scrape will be populated
-            // Otherwise, we might not have a specific URL to scrape for this turn.
-            const currentVectorstore = await self.scrapeAndVectorize([state.url_to_scrape]);
-            if (!currentVectorstore) {
+            // Extract the URL to scrape from the state
+            const urlToScrape = state.url_to_scrape;
+            console.log("URL TO SCRAPE:", state.url_to_scrape);
+            console.log("URL to scrape in retrieveAndAnswer:", urlToScrape);
+
+            const currentVectorstore = await self.scrapeAndVectorize(urlToScrape ? [urlToScrape] : []);
+            if (!currentVectorstore || !urlToScrape) {
                 // Fallback if scraping failed or no URL was provided by router
-                return { messages: [new AIMessage("I couldn't find relevant information in the provided sources. I will try to answer from my general knowledge.")], sourceDocuments: [] };
+                return { messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], sourceDocuments: [] };
             }
 
             const historyAwareRetriever = await createHistoryAwareRetriever({
@@ -206,9 +213,15 @@ class KBModel {
             return { messages: [new AIMessage(response.answer)], sourceDocuments: response.context };
         };
 
+        const answerDirectlyPrompt = ChatPromptTemplate.fromMessages([
+            [ "system", "Você é um assistente útil. Por favor, responda à pergunta do usuário abaixo usando seu conhecimento geral, sem mencionar fontes externas ou a base de conhecimento. Se você não souber a resposta, diga que não tem informações sobre o assunto." ],
+            [ "human", "{input}" ],
+        ]);
+
         const answerDirectly = async (state) => {
-            // Simple LLM call for general knowledge questions or if no relevant URL was found
-            const response = await llm.invoke(state.messages);
+            // Use a versão da pergunta que não inclui o histórico de chat para evitar repetição
+            const userQuestion = state.messages[state.messages.length - 1].content;
+            const response = await llm.invoke(await answerDirectlyPrompt.formatMessages({ input: userQuestion }));
             return { messages: [new AIMessage(response.content)], sourceDocuments: [] };
         };
 
