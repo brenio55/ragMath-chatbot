@@ -9,13 +9,31 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@langchain/community": "^0.0.24",
     "@langchain/core": "^0.3.72",
     "@langchain/google-genai": "^0.2.16",
-    "@langchain/langgraph": "^0.4.6",
+    "@langchain/langgraph": "^0.4.7",
+    "@mendable/firecrawl-js": "^3.3.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
-    "uuid": "^11.1.0"
+    "langchain": "^0.3.31",
+    "redis": "^4.6.16",
+    "uuid": "^11.1.0",
+    "xml2js": "^0.6.2",
+    "zod": "^3.23.8"
   },
+  "exports": {
+  ".": {
+    "types": "./index.d.ts",
+    "import": "./index.js",
+    "require": "./index.cjs"
+  },
+  "./openai": {
+    "import": "./openai.js",
+    "require": "./openai.cjs"
+  },
+  "./package.json": "./package.json"
+},
   "type": "module"
 }
