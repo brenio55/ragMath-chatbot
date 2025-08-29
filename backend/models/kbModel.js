@@ -18,6 +18,7 @@ import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Document } from "langchain/document";
 
 import firecrawlScrapper  from "../services/firecrawlScrapper.js"
+import { url } from 'inspector';
 
 let googleApiKey;
 let redisUrl;
@@ -223,9 +224,10 @@ class KBModel {
                 };
             }
 
-            const currentVectorstore = await firecrawlScrapper(urlToScrape)
+            console.log("> Iniciando scraping com Firecrawl para a URL:", urlToScrape);
+            const resultFromScrape = await firecrawlScrapper(urlToScrape)
 
-            if (!currentVectorstore) {
+            if (!resultFromScrape || resultFromScrape.length === 0 || resultFromScrape === "undefined") {
                 // Fallback if scraping failed or no URL was provided by router
                 return { 
                     messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
@@ -234,20 +236,21 @@ class KBModel {
             }
 
             // Use a simpler approach without historyAwareRetriever
-            console.log('currentVectorStore dados recuperados: ', currentVectorstore)
-            return null
-            const retriever = currentVectorstore.asRetriever();
-            const docs = await retriever.getRelevantDocuments(state.messages[0].content);
+            console.log('> scrapping feito com sucesso, dados recuperados.')
             
-            if (docs.length === 0) {
-                return { 
-                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
-                    sourceDocuments: [] 
-                };
-            }
+            // const retriever = currentVectorstore.asRetriever();
+            // const docs = await retriever.getRelevantDocuments(state.messages[0].content);
+            
+            // if (docs.length === 0) {
+            //     return { 
+            //         messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
+            //         sourceDocuments: [] 
+            //     };
+            // }
 
             // Create a simple prompt for the LLM
-            const context = docs.map(doc => doc.pageContent).join('\n\n');
+            const docsConsulted = urlToScrape;
+            const context = String(resultFromScrape);
             const prompt = `Com base no contexto fornecido abaixo, responda à pergunta do usuário de forma clara e precisa. Se a resposta não estiver no contexto, diga que não tem informações suficientes.
 
             Contexto:
@@ -255,12 +258,39 @@ class KBModel {
 
             Pergunta: ${state.messages[0].content}
 
-            Resposta:`;
+            Resposta: para a resposta, você pode retornar sobre o que o usuário perguntou baseado no contexto. Retorne um novo campo JSON além do routerDecission e message, chamado contextAnswer, que deve ser a resposta baseada no contexto.
+            
+            Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplo de resposta válida:
+            
+            {"routerDecision":"WEB_SEARCH","message":"https://ajuda.infinitepay.io/pt-BR/articles/link-do-artigo-que-voce-recebeu-informacao","contextAnswer":"As informações da InfinitePay são..."}
 
+            APENAS da forma acima. Não adicione nada mais de elementos JSON e não formate em markdown.
+            `;
+
+            console.log('> iniciando chamada ao LLM com prompt e contexto para resposta final ao usuário.');
             const response = await llm.invoke(prompt);
+            console.log('> resposta final do LLM:', response);
+            let JSONParsedResponse = JSON.parse(response);
+            console.log('> resposta final do LLM JSON:', JSONParsedResponse);
+            console.log('> resposta final do LLM JSON Content:', JSONParsedResponse.content);
+            if (JSONParsedResponse.includes("```")) {
+                console.log('> resposta final do LLM contém formatação markdown, removendo-a.');
+                response.content = response.content.replace(/```json/g, '').replace(/```/g, '');
+            }
+            
+            try {
+            console.log('> resposta final do LLM como contextAnswer:', JSON.parse(response.content.contextAnswer));
+            } catch (error) {
+                console.error("Error parsing final LLM response JSON:", error, "Raw output:", response.content);
+                return {
+                    messages: ['Erro ao processar resposta final para JSON.'], 
+                    sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
+                }
+            }
+
             return { 
                 messages: [new AIMessage(response.content)], 
-                sourceDocuments: docs 
+                sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
             };
         };
 
