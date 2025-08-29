@@ -25,17 +25,19 @@ const getKBAnswer = async (req, res) => {
     const modelResponse = await kbModel.invokeGraph(messages, sessionId);
 
     console.log("MODEL RESPONSE:", modelResponse);
+    console.log("Messages in response:", modelResponse.messages.map(msg => ({
+        type: msg.constructor.name,
+        content: typeof msg.content === 'string' ? msg.content.substring(0, 100) + '...' : msg.content
+    })));
 
-    // The new routing logic returns state with route information
-    // We need to find the final response message
+    // Process the model response to extract the final answer
     let finalResponseContent = '';
     let agentWorkflowSteps = [];
     let sourceDocuments = modelResponse.sourceDocuments || [];
 
-    // Find the final AI message that contains the actual response
-    // Look for the last AIMessage that has routerDecision information
+    // Find the last AI message that contains the router decision
     const routerMessages = modelResponse.messages.filter(msg => 
-        msg.lc_type === 'AIMessage' && 
+        msg.constructor.name === 'AIMessage' && 
         typeof msg.content === 'string' && 
         msg.content.includes('routerDecision')
     );
@@ -46,17 +48,17 @@ const getKBAnswer = async (req, res) => {
             const routerData = JSON.parse(lastRouterMessage.content);
             
             if (routerData.routerDecision === "WEB_SEARCH") {
-                // For WEB_SEARCH, we need to look for the actual answer from retrieveAndAnswer
-                const answerMessage = modelResponse.messages.find(msg => 
-                    msg.lc_type === 'AIMessage' && 
+                // For WEB_SEARCH, look for the actual answer from retrieveAndAnswer
+                const answerMessages = modelResponse.messages.filter(msg => 
+                    msg.constructor.name === 'AIMessage' && 
                     typeof msg.content === 'string' && 
-                    !msg.content.includes('routerDecision') &&
-                    !msg.content.includes('{') &&
-                    !msg.content.includes('}')
+                    !msg.content.includes('routerDecision')
                 );
                 
-                if (answerMessage) {
-                    finalResponseContent = answerMessage.content;
+                // Get the last non-router message as the answer
+                if (answerMessages.length > 0) {
+                    const lastAnswerMessage = answerMessages[answerMessages.length - 1];
+                    finalResponseContent = lastAnswerMessage.content;
                     agentWorkflowSteps = [{ "agent": "RouterAgent", "decision": "WebSearch" }, { "agent": "KnowledgeAgent" }];
                 } else {
                     finalResponseContent = "Não foi possível encontrar uma resposta relevante.";
@@ -76,8 +78,20 @@ const getKBAnswer = async (req, res) => {
             agentWorkflowSteps = [{ "agent": "System", "decision": "Error" }];
         }
     } else {
-        finalResponseContent = "Não foi possível processar a resposta do modelo.";
-        agentWorkflowSteps = [{ "agent": "System", "decision": "Error" }];
+        // Fallback: look for any AI message that doesn't contain routerDecision
+        const nonRouterMessages = modelResponse.messages.filter(msg => 
+            msg.constructor.name === 'AIMessage' && 
+            typeof msg.content === 'string' && 
+            !msg.content.includes('routerDecision')
+        );
+        
+        if (nonRouterMessages.length > 0) {
+            finalResponseContent = nonRouterMessages[nonRouterMessages.length - 1].content;
+            agentWorkflowSteps = [{ "agent": "System", "decision": "DirectAnswer" }];
+        } else {
+            finalResponseContent = "Não foi possível processar a resposta do modelo.";
+            agentWorkflowSteps = [{ "agent": "System", "decision": "Error" }];
+        }
     }
 
     await chatHistory.addMessage(kbModel.getHumanMessage(question));

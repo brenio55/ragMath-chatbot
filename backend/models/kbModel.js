@@ -139,21 +139,25 @@ class KBModel {
 
             const response = await llm.invoke(routePromptWithSitemap);
             console.log("Raw router LLM response:", response.content);
-            console.log("Response type:", typeof response.content);
-            console.log("Response length:", response.content.length);
             
             const parsedDecision = self.parseRouterDecision(response.content);
             console.log("Parsed router decision:", parsedDecision);
 
+            // Create a simplified response message with only essential information
+            const simplifiedResponse = new AIMessage(JSON.stringify({
+                routerDecision: parsedDecision.route,
+                message: parsedDecision.message
+            }));
+
             if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
                 return { 
-                    messages: [...state.messages, response], 
+                    messages: [...state.messages, simplifiedResponse], 
                     route: parsedDecision.route, 
                     url_to_scrape: parsedDecision.message 
                 };
             } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
                 return { 
-                    messages: [...state.messages, response], 
+                    messages: [...state.messages, simplifiedResponse], 
                     route: parsedDecision.route, 
                     direct_answer_message: parsedDecision.message 
                 };
@@ -161,7 +165,7 @@ class KBModel {
                 // Fallback for unexpected or missing information
                 console.error("Unexpected router decision format or missing message:", parsedDecision);
                 return { 
-                    messages: [...state.messages, response], 
+                    messages: [...state.messages, simplifiedResponse], 
                     route: "ANSWER_DIRECTLY", 
                     direct_answer_message: "Não foi possível determinar uma resposta clara no momento." 
                 };
@@ -285,8 +289,7 @@ Resposta:`;
 
         console.log("Graph invocation result:", result);
 
-        // The result from LangGraph is an object containing the final state
-        // We need to extract the messages and sourceDocuments from it.
+        // Simplify the response to only include essential information
         return {
             messages: result.messages,
             sourceDocuments: result.sourceDocuments || []
@@ -325,6 +328,7 @@ Resposta:`;
             // Try to parse the cleaned JSON
             const decision = JSON.parse(cleanedOutput);
             
+            // Validate the structure
             if (decision.routerDecision && decision.message !== undefined) {
                 return { route: decision.routerDecision, message: decision.message };
             } else {
@@ -333,7 +337,6 @@ Resposta:`;
             }
         } catch (error) {
             console.error("Error parsing router decision JSON:", error, "Raw output:", llmOutput);
-            console.error("Cleaned output attempt:", llmOutput.trim());
             return { route: "ANSWER_DIRECTLY", message: "Erro interno ao rotear a pergunta." };
         }
     }
