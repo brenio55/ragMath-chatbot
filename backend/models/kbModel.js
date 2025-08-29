@@ -17,6 +17,8 @@ import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Document } from "langchain/document";
 
+import firecrawlScrapper  from "../services/firecrawlScrapper.js"
+
 let googleApiKey;
 let redisUrl;
 let firecrawlApiKey;
@@ -205,12 +207,25 @@ class KBModel {
 
         const retrieveAndAnswer = async (state) => {
             // Extract the URL to scrape from the state
-            const urlToScrape = state.url_to_scrape;
-            console.log("URL TO SCRAPE:", state.url_to_scrape);
-            console.log("URL to scrape in retrieveAndAnswer:", urlToScrape);
+            console.log(">>> ENTERED retrieveAndAnswer with state:", state); 
+            const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
+            const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
+            
+            const urlToScrape = AIContentResponse.message || "no url found";
 
-            const currentVectorstore = await self.scrapeAndVectorize(urlToScrape ? [urlToScrape] : []);
-            if (!currentVectorstore || !urlToScrape) {
+            console.log("> URL to scrape in retrieveAndAnswer:", urlToScrape);
+
+            if (!urlToScrape) {
+                // Fallback if scraping failed or no URL was provided by router
+                return { 
+                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
+                    sourceDocuments: [] 
+                };
+            }
+
+            const currentVectorstore = await firecrawlScrapper(urlToScrape)
+
+            if (!currentVectorstore) {
                 // Fallback if scraping failed or no URL was provided by router
                 return { 
                     messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
@@ -219,6 +234,8 @@ class KBModel {
             }
 
             // Use a simpler approach without historyAwareRetriever
+            console.log('currentVectorStore dados recuperados: ', currentVectorstore)
+            return null
             const retriever = currentVectorstore.asRetriever();
             const docs = await retriever.getRelevantDocuments(state.messages[0].content);
             
@@ -233,12 +250,12 @@ class KBModel {
             const context = docs.map(doc => doc.pageContent).join('\n\n');
             const prompt = `Com base no contexto fornecido abaixo, responda à pergunta do usuário de forma clara e precisa. Se a resposta não estiver no contexto, diga que não tem informações suficientes.
 
-Contexto:
-${context}
+            Contexto:
+            ${context}
 
-Pergunta: ${state.messages[0].content}
+            Pergunta: ${state.messages[0].content}
 
-Resposta:`;
+            Resposta:`;
 
             const response = await llm.invoke(prompt);
             return { 
@@ -248,6 +265,7 @@ Resposta:`;
         };
 
 
+        
 
         const workflow = new StateGraph(MessagesAnnotation)
         .addNode("routeQuestion", routeQuestion)
@@ -257,12 +275,23 @@ Resposta:`;
           "routeQuestion",
           (state) => {
             // Check if we have route information in the state
-            if (state.route === "WEB_SEARCH") {
+
+            console.log('State at end of routeQuestion:', state);
+            const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
+            console.log('state last element content: ', LAST_ARRAY_ELEMENT.content);
+            const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
+            console.log('AIContentResponse: ', AIContentResponse);
+            console.log('content router decision: ', AIContentResponse.routerDecision);
+            // console.log('State routes at end of routeQuestion:', state.route);
+
+            const routeDecision = AIContentResponse.routerDecision || "ANSWER_DIRECTLY";
+
+            if (routeDecision === "WEB_SEARCH") {
               console.log('entered in routeQuestion Websearch');
               return "WEB_SEARCH";
             } else {
               // For ANSWER_DIRECTLY or any other case, return null to end
-              console.log('entered in routeQuestion answerDirectly');
+              console.log('entered in routeQuestion answerDirectly');              
               return null; // Use null instead of END to terminate the workflow
             }
           },

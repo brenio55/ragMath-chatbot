@@ -21,7 +21,4 @@ async function firecrawlScrapper(infoUrl) {
     return String(resultMarkdown)
 }
 
-
-firecrawlScrapper('https://ajuda.infinitepay.io/pt-BR/collections/1947792-primeiros-passos');
-
 export default firecrawlScrapper
