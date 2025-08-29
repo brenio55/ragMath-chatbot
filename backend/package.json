@@ -24,16 +24,16 @@
     "zod": "^3.23.8"
   },
   "exports": {
-  ".": {
-    "types": "./index.d.ts",
-    "import": "./index.js",
-    "require": "./index.cjs"
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./index.cjs"
+    },
+    "./openai": {
+      "import": "./openai.js",
+      "require": "./openai.cjs"
+    },
+    "./package.json": "./package.json"
   },
-  "./openai": {
-    "import": "./openai.js",
-    "require": "./openai.cjs"
-  },
-  "./package.json": "./package.json"
-},
   "type": "module"
 }

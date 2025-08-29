@@ -9,6 +9,7 @@ import {
     StateGraph,
 } from "@langchain/langgraph";
 import { MessagesPlaceholder, ChatPromptTemplate } from "@langchain/core/prompts";
+import { createClient } from 'redis';
 
 import Firecrawl from "@mendable/firecrawl-js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
@@ -17,21 +18,21 @@ import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Document } from "langchain/document";
 
 let googleApiKey;
-// let redisUrl;
+let redisUrl;
 let firecrawlApiKey;
-// let client;
+let client;
 let vectorstore;
 let appGraph;
 let llm;
 let firecrawlClient;
 
 // Temporary in-memory chat history
-const inMemoryChatHistory = {};
+// const inMemoryChatHistory = {};
 
 class KBModel {
     constructor() {
         googleApiKey = process.env.GOOGLE_API_KEY;
-        // redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+        redisUrl = process.env.REDIS_URL || "redis://redis:6379";
         firecrawlApiKey = process.env.FIRECRAWL_API_KEY;
 
         llm = new ChatGoogleGenerativeAI({
@@ -42,6 +43,20 @@ class KBModel {
         firecrawlClient = new Firecrawl({ apiKey: firecrawlApiKey });
 
         this.initLangchainGraph();
+        this.initRedisClient();
+    }
+
+    async initRedisClient() {
+        try {
+            client = createClient({
+                url: redisUrl
+            });
+            client.on('error', err => console.error('Redis Client Error', err));
+            await client.connect();
+            console.log("Connected to Redis.");
+        } catch (error) {
+            console.error("Failed to connect to Redis:", error);
+        }
     }
 
     // Removed initRedisClient method
@@ -107,13 +122,29 @@ class KBModel {
 
     // Modified getChatHistory to use in-memory history
     async getChatHistory(sessionId) {
-        if (!inMemoryChatHistory[sessionId]) {
-            inMemoryChatHistory[sessionId] = [];
-        }
+        // Implement Redis integration here
+        const historyKey = `chat_history:${sessionId}`;
+        const rawHistory = await client.get(historyKey);
+        let messages = rawHistory ? JSON.parse(rawHistory).map(msg => {
+            // Re-hydrate messages based on their type
+            if (msg.type === 'human') {
+                return new HumanMessage(msg.content);
+            } else if (msg.type === 'ai') {
+                return new AIMessage(msg.content);
+            }
+            return msg; // Should not happen with current types
+        }) : [];
+
         return {
-            getMessages: async () => inMemoryChatHistory[sessionId],
+            getMessages: async () => messages,
             addMessage: async (message) => {
-                inMemoryChatHistory[sessionId].push(message);
+                messages.push(message);
+                // Store only essential properties for serialization
+                const serializableMessages = messages.map(msg => ({
+                    type: msg.constructor.name === 'HumanMessage' ? 'human' : 'ai',
+                    content: msg.content
+                }));
+                await client.set(historyKey, JSON.stringify(serializableMessages));
             }
         };
     }
@@ -122,7 +153,7 @@ class KBModel {
         const self = this; // Capture 'this' for use inside nodes
 
         const routerPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", "Você é um assistente útil e um especialista em roteamento. Sua única e exclusiva tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplos de resposta válida: {{\"routerDecision\":\"WEB_SEARCH\",\"message\":\"https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay\"}} ou {{\"routerDecision\":\"ANSWER_DIRECTLY\",\"message\":\"A InfinitePay oferece diversas soluções de pagamento para o seu negócio.\"}} Opções de Decisão: 1. WEB_SEARCH: Use segit a pergunta NECESSITA de informações ESPECÍFICAS de um site que pode ser encontrado no sitemap. O 'message' DEVE ser a URL mais relevante. 2. ANSWER_DIRECTLY: Use se a pergunta pode ser respondida com conhecimento geral. O 'message' DEVE ser a resposta direta. Sitemap URLs disponíveis: {sitemap_urls} Suas respostas devem prioritariamente serem baseadas no sitemap, sempre preferencialmente pesquisando o assunto de acordo com o que você vê nos títulos do sitemap. Caso não encontre nada que possa dar match no site map, só assim responda diretamente." ],
+            [ "system", "Você é um assistente útil e um especialista em roteamento. Sua única e exclusiva tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplos de resposta válida: {{\"routerDecision\":\"WEB_SEARCH\",\"message\":\"https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay\"}} ou {{\"routerDecision\":\"ANSWER_DIRECTLY\",\"message\":\"Olá! Como posso ajudar?\"}} Opções de Decisão: 1. WEB_SEARCH: Use se a pergunta NECESSITA de informações ESPECÍFICAS de um site que pode ser encontrado no sitemap. O 'message' DEVE ser a URL mais relevante. 2. ANSWER_DIRECTLY: Use se a pergunta pode ser respondida com conhecimento geral ou com base no histórico do chat. O 'message' DEVE ser a resposta direta para o usuário, utilizando o histórico da conversa se for relevante. Sitemap URLs disponíveis: {sitemap_urls} Suas respostas devem prioritariamente serem baseadas no sitemap, sempre preferencialmente pesquisando o assunto de acordo com o que você vê nos títulos do sitemap. Caso não encontre nada que possa dar match no site map, só assim responda diretamente." ],
             new MessagesPlaceholder("chat_history"),
             [ "human", "{input}" ],
         ]);
@@ -133,7 +164,7 @@ class KBModel {
 
             const routePromptWithSitemap = await routerPrompt.formatMessages({
                 sitemap_urls: formattedSitemap,
-                chat_history: state.messages.slice(0, -1),
+                chat_history: state.chatHistory || [],
                 input: state.messages[state.messages.length - 1].content,
             });
 
@@ -143,31 +174,31 @@ class KBModel {
             const parsedDecision = self.parseRouterDecision(response.content);
             console.log("Parsed router decision:", parsedDecision);
 
-            // Create a simplified response message with only essential information
-            const simplifiedResponse = new AIMessage(JSON.stringify({
-                routerDecision: parsedDecision.route,
-                message: parsedDecision.message
-            }));
-
             if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
-                return { 
-                    messages: [...state.messages, simplifiedResponse], 
-                    route: parsedDecision.route, 
-                    url_to_scrape: parsedDecision.message 
+                // For WEB_SEARCH, create a router message and continue to retrieveAndAnswer
+                const simplifiedResponse = new AIMessage(JSON.stringify({
+                    routerDecision: parsedDecision.route,
+                    message: parsedDecision.message
+                }));
+                return {
+                    messages: [simplifiedResponse],
+                    route: parsedDecision.route,
+                    url_to_scrape: parsedDecision.message
                 };
             } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
-                return { 
-                    messages: [...state.messages, simplifiedResponse], 
-                    route: parsedDecision.route, 
-                    direct_answer_message: parsedDecision.message 
+                // For ANSWER_DIRECTLY, append the final answer to the existing messages
+                const finalResponse = new AIMessage(parsedDecision.message);
+                return {
+                    messages: [...state.messages, finalResponse],
+                    route: parsedDecision.route
                 };
             } else {
                 // Fallback for unexpected or missing information
                 console.error("Unexpected router decision format or missing message:", parsedDecision);
-                return { 
-                    messages: [...state.messages, simplifiedResponse], 
-                    route: "ANSWER_DIRECTLY", 
-                    direct_answer_message: "Não foi possível determinar uma resposta clara no momento." 
+                const fallbackResponse = new AIMessage("Não foi possível determinar uma resposta clara no momento.");
+                return {
+                    messages: [...state.messages, fallbackResponse],
+                    route: "ANSWER_DIRECTLY"
                 };
             }
         };
@@ -182,18 +213,18 @@ class KBModel {
             if (!currentVectorstore || !urlToScrape) {
                 // Fallback if scraping failed or no URL was provided by router
                 return { 
-                    messages: [...state.messages, new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
+                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
                     sourceDocuments: [] 
                 };
             }
 
             // Use a simpler approach without historyAwareRetriever
             const retriever = currentVectorstore.asRetriever();
-            const docs = await retriever.getRelevantDocuments(state.messages[state.messages.length - 1].content);
+            const docs = await retriever.getRelevantDocuments(state.messages[0].content);
             
             if (docs.length === 0) {
                 return { 
-                    messages: [...state.messages, new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
+                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
                     sourceDocuments: [] 
                 };
             }
@@ -205,71 +236,49 @@ class KBModel {
 Contexto:
 ${context}
 
-Pergunta: ${state.messages[state.messages.length - 1].content}
+Pergunta: ${state.messages[0].content}
 
 Resposta:`;
 
             const response = await llm.invoke(prompt);
             return { 
-                messages: [...state.messages, new AIMessage(response.content)], 
+                messages: [new AIMessage(response.content)], 
                 sourceDocuments: docs 
             };
         };
 
-        const answerDirectly = async (state) => {
-            const directAnswerMessage = state.direct_answer_message;
-            if (directAnswerMessage) {
-                return { 
-                    messages: [...state.messages, new AIMessage(directAnswerMessage)], 
-                    sourceDocuments: [] 
-                };
-            } else {
-                // Fallback if for some reason direct_answer_message is not available
-                const userQuestion = state.messages[state.messages.length - 1].content;
-                const prompt = `Você é um assistente útil. Por favor, responda à pergunta do usuário abaixo usando seu conhecimento geral, sem mencionar fontes externas ou a base de conhecimento. Se você não souber a resposta, diga que não tem informações sobre o assunto.
 
-Pergunta: ${userQuestion}
-
-Resposta:`;
-                const response = await llm.invoke(prompt);
-                return { 
-                    messages: [...state.messages, new AIMessage(response.content)], 
-                    sourceDocuments: [] 
-                };
-            }
-        };
 
         const workflow = new StateGraph(MessagesAnnotation)
-            .addNode("routeQuestion", routeQuestion)
-            .addNode("retrieveAndAnswer", retrieveAndAnswer)
-            .addNode("answerDirectly", answerDirectly)
-            .addEdge(START, "routeQuestion")
-            .addConditionalEdges(
-                "routeQuestion",
-                (state) => {
-                    // Check if we have route information in the state
-                    if (state.route === "WEB_SEARCH") {
-                        return "WEB_SEARCH";
-                    } else if (state.route === "ANSWER_DIRECTLY") {
-                        return "ANSWER_DIRECTLY";
-                    } else {
-                        // Fallback to ANSWER_DIRECTLY if no route is determined
-                        return "ANSWER_DIRECTLY";
-                    }
-                },
-                {
-                    "WEB_SEARCH": "retrieveAndAnswer",
-                    "ANSWER_DIRECTLY": "answerDirectly",
-                }
-            )
-            .addEdge("retrieveAndAnswer", END)
-            .addEdge("answerDirectly", END);
+        .addNode("routeQuestion", routeQuestion)
+        .addNode("retrieveAndAnswer", retrieveAndAnswer)
+        .addEdge(START, "routeQuestion")
+        .addConditionalEdges(
+          "routeQuestion",
+          (state) => {
+            // Check if we have route information in the state
+            if (state.route === "WEB_SEARCH") {
+              console.log('entered in routeQuestion Websearch');
+              return "WEB_SEARCH";
+            } else {
+              // For ANSWER_DIRECTLY or any other case, return null to end
+              console.log('entered in routeQuestion answerDirectly');
+              return null; // Use null instead of END to terminate the workflow
+            }
+          },
+          {
+            "WEB_SEARCH": "retrieveAndAnswer",
+            // Optionally, you can map null to END explicitly
+            null: END
+          } //here it maps to where the conditional edge will let to.
+        )
+        .addEdge("retrieveAndAnswer", END);
 
         appGraph = workflow.compile();
         console.log("Langchain graph compiled.");
     }
 
-    async invokeGraph(messages, sessionId) {
+    async invokeGraph(messages, sessionId, chatHistory = []) {
         const config = {
             configurable: {
                 thread_id: sessionId,
@@ -277,11 +286,15 @@ Resposta:`;
             recursionLimit: 50,
         };
 
-        console.log("Invoking graph with messages:", messages);
+        console.log("Invoking graph with messages:", messages.length, "messages");
+        console.log("Message types:", messages.map(msg => msg.constructor.name));
+        console.log("Chat history length:", chatHistory.length);
 
         // The StateGraph expects an initial state, which includes the messages
-        const initialState = { messages: messages };
-
+        const initialState = { 
+            messages: messages,
+            chatHistory: chatHistory
+        };
 
         console.log("Invoking graph with initial state:", initialState);
 
@@ -342,4 +355,4 @@ Resposta:`;
     }
 }
 
-export default KBModel; 
+export default KBModel;
