@@ -265,12 +265,21 @@ class KBModel {
             {"routerDecision":"WEB_SEARCH","message":"https://ajuda.infinitepay.io/pt-BR/articles/link-do-artigo-que-voce-recebeu-informacao","contextAnswer":"As informações da InfinitePay são..."}
 
             APENAS da forma acima. Não adicione nada mais de elementos JSON e não formate em markdown.
+
+            Certifique-se de que você vai colocar o link de onde você buscou a informação no campo message, e a resposta baseada no contexto no campo contextAnswer.
             `;
 
             console.log('> iniciando chamada ao LLM com prompt e contexto para resposta final ao usuário.');
             const response = await llm.invoke(prompt);
             console.log('> resposta final do LLM:', response);
-            let JSONParsedResponse = JSON.parse(response);
+            console.log('> RESPONSE TYPE: ', typeof response);
+            console.log('> RESPONSE AI MESSAGE content: ', response.content);
+            // console.log('> RESPONSE AI MESSAGE JSON PARSED: ', JSON.parse(response.content));
+
+            let responseCleaned;
+            if (response.content.includes('```')) { responseCleaned = response.content.replace(/```json\n|```/g, ''); }
+
+            let JSONParsedResponse = JSON.parse(responseCleaned);
             console.log('> resposta final do LLM JSON:', JSONParsedResponse);
             console.log('> resposta final do LLM JSON Content:', JSONParsedResponse.content);
             if (JSONParsedResponse.includes("```")) {

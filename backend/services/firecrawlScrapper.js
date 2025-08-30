@@ -15,8 +15,8 @@ async function firecrawlScrapper(infoUrl) {
     loadDocument = await firecrawl.scrape(infoUrl, {formats : ['markdown']});
     resultMarkdown = loadDocument.markdown;
 
-    console.log('loaded document: ', loadDocument)
-    console.log('resultMarkdown: ', resultMarkdown);
+    // console.log('loaded document: ', loadDocument)
+    console.log('resultMarkdown: ', resultMarkdown.substring(0, 100)) // apenas os primeiros 2000 caracteres;
 
     return String(resultMarkdown)
 }
