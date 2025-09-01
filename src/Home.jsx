@@ -162,20 +162,22 @@ function Home() {
           <p>Chat ID: {threadId}</p>
         </div>
         <h2>{title}</h2>
-        <ChatContainer
-          messages={messages}
-          inputText={inputText}
-          handleInputChange={handleInputChange}
-          handleSubmit={handleSubmit}
-          clearThread={clearThread}
-          chatEndRef={chatEndRef}
-        />
-        {jsonResponse && (
-          <div className="json-response-container">
-            <h4>Backend JSON Response:</h4>
-            <pre className="json-display">{JSON.stringify(jsonResponse, null, 2)}</pre>
-          </div>
-        )}
+        <div className="response-container flex">
+          <ChatContainer
+            messages={messages}
+            inputText={inputText}
+            handleInputChange={handleInputChange}
+            handleSubmit={handleSubmit}
+            clearThread={clearThread}
+            chatEndRef={chatEndRef}
+          />
+          {jsonResponse && (
+            <div className="json-response-container">
+              <h4 style={{ marginTop: '15px'}}>Backend JSON Response:</h4>
+              <pre className="json-display">{JSON.stringify(jsonResponse, null, 2)}</pre>
+            </div>
+          )}
+        </div>
       </>
       {threadCleared && <div className="thread-cleared">The Thread was cleared</div>}
     </div>
