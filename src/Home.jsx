@@ -109,8 +109,8 @@ function Home() {
 
   const createSystemMessage = (data, isError = false) => {
     const message = data.response;
-    const agentName = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[0].agent : 'System';
-    const routerDecision = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[0].decision : 'N/A';
+    const agentName = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[data.agent_workflow.length - 1].agent : 'System';
+    const routerDecision = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[data.agent_workflow.length - 2].decision : 'N/A';
     const sourceDocuments = data.source_agent_response || [];
 
     return {

@@ -12,7 +12,8 @@ html, body {
   align-items: center;
   justify-content: center;
   text-align: center;
-  overflow: hidden;
+  
+  max-height: 100vh;
 }
 
 @keyframes slideInFromRight {
@@ -112,7 +113,7 @@ html, body {
 .chat-messages {
   width: 100%;
   height: calc(100% - 120px); /* Adjusted height to accommodate input and buttons */
-  overflow-y: auto;
+  overflow-y: scroll;
   padding: 20px;
   box-sizing: border-box;
   scroll-behavior: smooth;
@@ -312,7 +313,7 @@ body {
   display: flex;
   place-content: center;
   align-items: center;
-  overflow: hidden;
+  
 }
 
 * {
@@ -356,7 +357,7 @@ body {
   border-radius: 5px;
   overflow-x: auto;
   white-space: pre-wrap; /* Quebra de linha para o JSON */
-  max-height: 95%;
+  max-height: 85%;
   font-size: 0.9em;
 }
 
@@ -364,7 +365,7 @@ body {
   gap: 10px;
   align-items: flex-start;
   width: inherit;
-  height: inherit;
+  height: 85%;
 }
 
 .chat-info {
