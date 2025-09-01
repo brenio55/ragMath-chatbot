@@ -22,11 +22,12 @@ const ChatContainer = ({
       </div>
       <form onSubmit={handleSubmit} className="chat-input-form">
         <div className="buttonFlex">
-          <div className="flex">
+          <div className="flex" style={{width: '100%'}}>
             <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-            <button type="submit">Send</button>
+            
           </div>
-          <div className="flex">
+          <div className="flex" style={{gap: '10px'}}>
+            <button type="submit">Send</button>
             <button type="button" onClick={clearThread}>Clear Thread</button>
           </div>
         </div>

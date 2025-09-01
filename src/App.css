@@ -50,6 +50,11 @@ html, body {
   margin-right: 15%; /* Adicionado para criar um offset */
 }
 
+.flex{
+  position: relative;
+  display: flex;
+}
+
 .message.system .system-label {
   color: #a1a1ff; /* Um tom de azul mais suave */
   font-weight: bold;
@@ -139,7 +144,7 @@ html, body {
   color: #e0e0e0;
   font-size: 1em;
   outline: none;
-  width: 100%; /* Ensure input takes full width */
+  width: 100%;
 }
 
 .chat-input-form input::placeholder {
@@ -147,7 +152,7 @@ html, body {
 }
 
 .chat-input-form button {
-  padding: 12px 20px;
+  padding: 0px 20px;
   font-size: 1em;
   background-color: #1a73e8;
   border: none;
@@ -155,7 +160,8 @@ html, body {
   color: white;
   cursor: pointer;
   transition: background-color 0.2s ease-in-out;
-  width: 100%; /* Ensure buttons take full width within their container */
+  width: 100%;
+  height: initial;
 }
 
 .chat-input-form button:hover {
