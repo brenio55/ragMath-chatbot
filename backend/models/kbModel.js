@@ -12,13 +12,9 @@ import { MessagesPlaceholder, ChatPromptTemplate } from "@langchain/core/prompts
 import { createClient } from 'redis';
 
 import Firecrawl from "@mendable/firecrawl-js";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { Document } from "langchain/document";
 
 import firecrawlScrapper  from "../services/firecrawlScrapper.js"
-import { url } from 'inspector';
 
 let googleApiKey;
 let redisUrl;
@@ -93,7 +89,6 @@ class KBModel {
                     console.log("Parsed router decision:", parsedDecision);
 
                     if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
-                        // For WEB_SEARCH, create a router message and continue to retrieveAndAnswer
                         const simplifiedResponse = new AIMessage(JSON.stringify({
                             routerDecision: parsedDecision.route,
                             message: parsedDecision.message
@@ -104,8 +99,12 @@ class KBModel {
                             url_to_scrape: parsedDecision.message
                         };
                     } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
-                        // For ANSWER_DIRECTLY, append the final answer to the existing messages
-                        const finalResponse = new AIMessage(parsedDecision.message);
+                        // Alteração aqui: Sempre use JSON.stringify para consistência
+                        const finalResponseContent = JSON.stringify({
+                            routerDecision: parsedDecision.route,
+                            message: parsedDecision.message
+                        });
+                        const finalResponse = new AIMessage(finalResponseContent);
                         return {
                             messages: [...state.messages, finalResponse],
                             route: parsedDecision.route
@@ -267,27 +266,42 @@ class KBModel {
 
     // Modified getChatHistory to use in-memory history
     async getChatHistory(sessionId) {
-        // Implement Redis integration here
         const historyKey = `chat_history:${sessionId}`;
         const rawHistory = await client.get(historyKey);
-        let messages = rawHistory ? JSON.parse(rawHistory).map(msg => {
-            // Re-hydrate messages based on their type
-            if (msg.type === 'human') {
-                return new HumanMessage(msg.content);
-            } else if (msg.type === 'ai') {
-                return new AIMessage(msg.content);
+        let messages = [];
+
+        if (rawHistory) {
+            try {
+                const parsedHistory = JSON.parse(rawHistory);
+                messages = parsedHistory.map(msg => {
+                    // Garantir que additional_kwargs esteja presente
+                    const messageData = {
+                        content: msg.content,
+                        additional_kwargs: msg.additional_kwargs || {} // Adiciona um objeto vazio se não existir
+                    };
+
+                    if (msg.type === 'human') {
+                        return new HumanMessage(messageData);
+                    } else if (msg.type === 'ai') {
+                        return new AIMessage(messageData);
+                    }
+                    return msg; // Caso não seja human ou ai, retorna o objeto original
+                });
+            } catch (error) {
+                console.error("Erro ao parsear histórico do Redis:", error);
+                return [];
             }
-            return msg; // Should not happen with current types
-        }) : [];
+        }
 
         return {
             getMessages: async () => messages,
             addMessage: async (message) => {
                 messages.push(message);
-                // Store only essential properties for serialization
+                // Serializar apenas as propriedades necessárias
                 const serializableMessages = messages.map(msg => ({
                     type: msg.constructor.name === 'HumanMessage' ? 'human' : 'ai',
-                    content: msg.content
+                    content: msg.content,
+                    additional_kwargs: msg.additional_kwargs || {} // Inclui additional_kwargs
                 }));
                 await client.set(historyKey, JSON.stringify(serializableMessages));
             }

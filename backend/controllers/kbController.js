@@ -90,12 +90,10 @@ function processModelResponse(modelResponse) {
         };
     }
 
-    // 3. Se não for WEB_SEARCH, ou se não houver routerData, procura por uma resposta direta
-    const directAnswerMessage = findDirectAnswer(messages);
-    if (directAnswerMessage) {
+    if (routerData && routerData.routerDecision === "ANSWER_DIRECTLY") {
         return {
-            finalResponseContent: directAnswerMessage.content,
-            agentWorkflowSteps: [{ "agent": "RouterAgent", "decision": "AnswerDirectly" }],
+            finalResponseContent: { contextAnswer: routerData.message, llmSource: 'Processamento interno sem consulta de base de dados.' },
+            agentWorkflowSteps: [{ "agent": "RouterAgent", "decision": "ANSWER_DIRECTLY" } ,  { "agent": "InternalProcessingAgent" }],
             sourceDocuments
         };
     }
@@ -140,6 +138,18 @@ const getKBAnswer = async (req, res) => {
     // Add the user question and AI response to chat history
     await chatHistory.addMessage(kbModel.getHumanMessage(question));
     await chatHistory.addMessage(kbModel.getAIMessage(finalResponseContent));
+
+    if (!finalResponseContent) {
+        return res.status(500).json({ error: "Failed to generate a valid response." });
+    }
+
+    if (typeof finalResponseContent === 'string') {
+        return res.status(500).json({ error: "Failed to parse the response content." });
+    }
+
+    if (!finalResponseContent.contextAnswer) {
+        
+    }
 
     res.json({
         response: finalResponseContent.contextAnswer, // Main response with personality
