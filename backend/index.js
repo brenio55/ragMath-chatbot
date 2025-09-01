@@ -13,10 +13,6 @@ import kbRoutes from './routes/kbRoutes.js';
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.send('Hello World!');
-})
-
 app.use('/api/KB', kbRoutes);
 
 

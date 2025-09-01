@@ -33,6 +33,8 @@ function findAndParseRouterMessage(messages) {
     if (!routerMessage) {
         return null;
     }
+    
+    console.log('> Router message found:', routerMessage);
 
     try {
         return JSON.parse(routerMessage.content);

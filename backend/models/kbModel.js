@@ -41,6 +41,9 @@ class KBModel {
         llm = new ChatGoogleGenerativeAI({
             temperature: 0,
             model: "gemini-2.0-flash",
+            generationConfig: {
+                responseMimeType: "application/json", // This line forces JSON output
+            }
         });
 
         firecrawlClient = new Firecrawl({ apiKey: firecrawlApiKey });
@@ -64,13 +67,194 @@ class KBModel {
 
     // Removed initRedisClient method
 
+    async initLangchainGraph() {
+                const self = this; // Capture 'this' for use inside nodes
+
+                const routerPrompt = ChatPromptTemplate.fromMessages([
+                    [ "system", "Você é um assistente útil e um especialista em roteamento. Sua única e exclusiva tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplos de resposta válida: {{\"routerDecision\":\"WEB_SEARCH\",\"message\":\"https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay\"}} ou {{\"routerDecision\":\"ANSWER_DIRECTLY\",\"message\":\"Olá! Como posso ajudar?\"}} Opções de Decisão: 1. WEB_SEARCH: Use se a pergunta NECESSITA de informações ESPECÍFICAS de um site que pode ser encontrado no sitemap. O 'message' DEVE ser a URL mais relevante. 2. ANSWER_DIRECTLY: Use se a pergunta pode ser respondida com conhecimento geral ou com base no histórico do chat. O 'message' DEVE ser a resposta direta para o usuário, utilizando o histórico da conversa se for relevante. Sitemap URLs disponíveis: {sitemap_urls} Suas respostas devem prioritariamente serem baseadas no sitemap, sempre preferencialmente pesquisando o assunto de acordo com o que você vê nos títulos do sitemap. Caso não encontre nada que possa dar match no site map, só assim responda diretamente." ],
+                    new MessagesPlaceholder("chat_history"),
+                    [ "human", "{input}" ],
+                ]);
+
+                const routeQuestion = async (state) => {
+                    const sitemapUrls = await self.loadSitemap();
+                    const formattedSitemap = sitemapUrls.join('\n');
+
+                    const routePromptWithSitemap = await routerPrompt.formatMessages({
+                        sitemap_urls: formattedSitemap,
+                        chat_history: state.chatHistory || [],
+                        input: state.messages[state.messages.length - 1].content,
+                    });
+
+                    const response = await llm.invoke(routePromptWithSitemap);
+                    console.log("Raw router LLM response:", response.content);
+                    
+                    const parsedDecision = self.parseRouterDecision(response.content);
+                    console.log("Parsed router decision:", parsedDecision);
+
+                    if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
+                        // For WEB_SEARCH, create a router message and continue to retrieveAndAnswer
+                        const simplifiedResponse = new AIMessage(JSON.stringify({
+                            routerDecision: parsedDecision.route,
+                            message: parsedDecision.message
+                        }));
+                        return {
+                            messages: [simplifiedResponse],
+                            route: parsedDecision.route,
+                            url_to_scrape: parsedDecision.message
+                        };
+                    } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
+                        // For ANSWER_DIRECTLY, append the final answer to the existing messages
+                        const finalResponse = new AIMessage(parsedDecision.message);
+                        return {
+                            messages: [...state.messages, finalResponse],
+                            route: parsedDecision.route
+                        };
+                    } else {
+                        // Fallback for unexpected or missing information
+                        console.error("Unexpected router decision format or missing message:", parsedDecision);
+                        const fallbackResponse = new AIMessage("Não foi possível determinar uma resposta clara no momento.");
+                        return {
+                            messages: [...state.messages, fallbackResponse],
+                            route: "ANSWER_DIRECTLY"
+                        };
+                    }
+                };
+
+                const retrieveAndAnswer = async (state) => {
+                    // Extract the URL to scrape from the state
+                    console.log(">>> ENTERED retrieveAndAnswer with state:", state); 
+                    const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
+                    const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
+                    
+                    const urlToScrape = AIContentResponse.message || "no url found";
+
+                    console.log("> URL to scrape in retrieveAndAnswer:", urlToScrape);
+
+                    if (!urlToScrape) {
+                        // Fallback if scraping failed or no URL was provided by router
+                        return { 
+                            messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
+                            sourceDocuments: [] 
+                        };
+                    }
+
+                    console.log("> Iniciando scraping com Firecrawl para a URL:", urlToScrape);
+                    const resultFromScrape = await firecrawlScrapper(urlToScrape)
+
+                    if (!resultFromScrape || resultFromScrape.length === 0 || resultFromScrape === "undefined") {
+                        // Fallback if scraping failed or no URL was provided by router
+                        return { 
+                            messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
+                            sourceDocuments: [] 
+                        };
+                    }
+
+                    // Use a simpler approach without historyAwareRetriever
+                    console.log('> scrapping feito com sucesso, dados recuperados.')
+            
+
+                    // Create a simple prompt for the LLM
+                    const docsConsulted = urlToScrape;
+                    const context = String(resultFromScrape);
+                    const prompt = `Com base no contexto fornecido abaixo, responda à pergunta do usuário de forma clara e precisa. Se a resposta não estiver no contexto, diga que não tem informações suficientes.
+
+                    Contexto:
+                    ${context}
+
+                    Pergunta: ${state.messages[0].content}
+
+                    Documento consultado: ${docsConsulted}. -- Caso não tenha consultado nenhum documento, responda "Nenhum documento consultado".
+
+                    Resposta: para a resposta, você pode retornar sobre o que o usuário perguntou baseado no contexto. Retorne um novo campo JSON além do routerDecission e message, chamado contextAnswer, que deve ser a resposta baseada no contexto.
+                    
+                    Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplo de resposta válida:
+                    
+                    {"routerDecision":"WEB_SEARCH","message":"https://ajuda.infinitepay.io/pt-BR/articles/link-do-artigo-que-voce-recebeu-informacao","contextAnswer":"As informações da InfinitePay são..."}
+
+                    APENAS da forma acima. Não adicione nada mais de elementos JSON e não formate em markdown.
+
+                    Certifique-se de que você vai colocar o link de onde você buscou a informação no campo message, e a resposta baseada no contexto no campo contextAnswer.
+                    `;
+
+                    console.log('> iniciando chamada ao LLM com prompt e contexto para resposta final ao usuário.');
+                    const response = await llm.invoke(prompt);
+                    console.log('> RESPONSE LLM:', response);
+                    console.log('> RESPONSE TYPE: ', typeof response);
+
+                    let responseCleaned = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+                    if (responseCleaned.includes('```')) { 
+                        console.log('\n> resposta final do LLM contém formatação markdown, removendo-a. \n');
+                        responseCleaned = responseCleaned.replace(/```json\n|```/g, '').trim();
+                    }
+
+                    let JSONParsedResponse;
+                    let JSONStringfiedResponse = responseCleaned;
+
+                    try {    
+                        JSONParsedResponse = JSON.parse(responseCleaned);
+                        console.log('\n > resposta final do LLM JSON:', JSONParsedResponse);
+                    } catch (error) {
+                        console.error("Error parsing final LLM response JSON:", error, "Raw output:", responseCleaned);
+                        return {
+                            messages: ['Erro ao processar resposta final para JSON.'], 
+                            sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
+                        }
+                    }
+
+                    return { 
+                        messages: [new AIMessage(JSONStringfiedResponse)], 
+                        sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
+                    };
+                };
+
+                const workflow = new StateGraph(MessagesAnnotation)
+                .addNode("routeQuestion", routeQuestion)
+                .addNode("retrieveAndAnswer", retrieveAndAnswer)
+                .addEdge(START, "routeQuestion")
+                .addConditionalEdges(
+                "routeQuestion",
+                (state) => {
+                    // Check if we have route information in the state
+
+                    // console.log('State at end of routeQuestion:', state);
+                    const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
+                    // console.log('state last element content: ', LAST_ARRAY_ELEMENT.content);
+                    const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
+                    // console.log('AIContentResponse: ', AIContentResponse);
+                    console.log('> content router decision: ', AIContentResponse.routerDecision);
+                    // console.log('State routes at end of routeQuestion:', state.route);
+
+                    const routeDecision = AIContentResponse.routerDecision || "ANSWER_DIRECTLY";
+
+                    if (routeDecision === "WEB_SEARCH") {
+                    console.log('> entered in routeQuestion Websearch');
+                    return "WEB_SEARCH";
+                    } else {
+                    // For ANSWER_DIRECTLY or any other case, return null to end
+                    console.log('> entered in routeQuestion answerDirectly');              
+                    return null; // Use null instead of END to terminate the workflow
+                    }
+                },
+                {
+                    "WEB_SEARCH": "retrieveAndAnswer",
+                    // Optionally, you can map null to END explicitly
+                    null: END
+                } //here it maps to where the conditional edge will let to.
+                )
+                .addEdge("retrieveAndAnswer", END);
+
+                appGraph = workflow.compile();
+                console.log("Langchain graph compiled.");
+    }
+
     async loadSitemap() {
         try {
             const __filename = fileURLToPath(import.meta.url);
             const __dirname = path.dirname(__filename);
             const sitemapPath = path.resolve(__dirname, '../public/infinityPayFaqSitemap.xml');
-            console.log("Current working directory (inside container):", process.cwd());
-            console.log("Resolved sitemap path (inside container):", sitemapPath);
+            console.log("> Current working directory (inside container):", process.cwd());
+            console.log("> Resolved sitemap path (inside container):", sitemapPath);
             const sitemapContent = await fs.promises.readFile(sitemapPath, 'utf-8');
             const result = await parseStringPromise(sitemapContent);
             const urls = result.urlset.url.map(urlEntry => urlEntry.loc[0]);
@@ -79,48 +263,6 @@ class KBModel {
             console.error("Error loading or parsing sitemap:", error);
             return [];
         }
-    }
-
-    async scrapeUrls(urls) {
-        let docs = [];
-        for (const url of urls) {
-            try {
-                const { data } = await firecrawlClient.scrape(url, { formats: ['markdown'] });
-                if (data && data.content) {
-                    docs.push(new Document({
-                        pageContent: data.content.markdown,
-                        metadata: { source: url, title: data.title }
-                    }));
-                }
-            } catch (error) {
-                console.error(`Error scraping ${url}:`, error);
-            }
-        }
-        return docs;
-    }
-
-    async scrapeAndVectorize(urlsToScrape) {
-        if (!urlsToScrape || urlsToScrape.length === 0) {
-            console.log("No URLs to scrape.");
-            return null;
-        }
-
-        const scrapedDocs = await this.scrapeUrls(urlsToScrape);
-
-        if (scrapedDocs.length === 0) {
-            console.log("No documents scraped.");
-            return null;
-        }
-
-        const splitter = new RecursiveCharacterTextSplitter();
-        const embeddings = new GoogleGenerativeAIEmbeddings();
-
-        const splitDocs = await splitter.splitDocuments(scrapedDocs);
-        const newVectorstore = await MemoryVectorStore.fromDocuments(
-            splitDocs, embeddings
-        );
-        console.log("Vector store created/updated with scraped data.");
-        return newVectorstore;
     }
 
     // Modified getChatHistory to use in-memory history
@@ -150,200 +292,6 @@ class KBModel {
                 await client.set(historyKey, JSON.stringify(serializableMessages));
             }
         };
-    }
-
-    async initLangchainGraph() {
-        const self = this; // Capture 'this' for use inside nodes
-
-        const routerPrompt = ChatPromptTemplate.fromMessages([
-            [ "system", "Você é um assistente útil e um especialista em roteamento. Sua única e exclusiva tarefa é analisar a pergunta do usuário e o histórico de chat para decidir a MELHOR rota a seguir. Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplos de resposta válida: {{\"routerDecision\":\"WEB_SEARCH\",\"message\":\"https://ajuda.infinitepay.io/pt-BR/articles/3359956-quais-sao-as-taxas-da-infinitepay\"}} ou {{\"routerDecision\":\"ANSWER_DIRECTLY\",\"message\":\"Olá! Como posso ajudar?\"}} Opções de Decisão: 1. WEB_SEARCH: Use se a pergunta NECESSITA de informações ESPECÍFICAS de um site que pode ser encontrado no sitemap. O 'message' DEVE ser a URL mais relevante. 2. ANSWER_DIRECTLY: Use se a pergunta pode ser respondida com conhecimento geral ou com base no histórico do chat. O 'message' DEVE ser a resposta direta para o usuário, utilizando o histórico da conversa se for relevante. Sitemap URLs disponíveis: {sitemap_urls} Suas respostas devem prioritariamente serem baseadas no sitemap, sempre preferencialmente pesquisando o assunto de acordo com o que você vê nos títulos do sitemap. Caso não encontre nada que possa dar match no site map, só assim responda diretamente." ],
-            new MessagesPlaceholder("chat_history"),
-            [ "human", "{input}" ],
-        ]);
-
-        const routeQuestion = async (state) => {
-            const sitemapUrls = await self.loadSitemap();
-            const formattedSitemap = sitemapUrls.join('\n');
-
-            const routePromptWithSitemap = await routerPrompt.formatMessages({
-                sitemap_urls: formattedSitemap,
-                chat_history: state.chatHistory || [],
-                input: state.messages[state.messages.length - 1].content,
-            });
-
-            const response = await llm.invoke(routePromptWithSitemap);
-            console.log("Raw router LLM response:", response.content);
-            
-            const parsedDecision = self.parseRouterDecision(response.content);
-            console.log("Parsed router decision:", parsedDecision);
-
-            if (parsedDecision.route === "WEB_SEARCH" && parsedDecision.message) {
-                // For WEB_SEARCH, create a router message and continue to retrieveAndAnswer
-                const simplifiedResponse = new AIMessage(JSON.stringify({
-                    routerDecision: parsedDecision.route,
-                    message: parsedDecision.message
-                }));
-                return {
-                    messages: [simplifiedResponse],
-                    route: parsedDecision.route,
-                    url_to_scrape: parsedDecision.message
-                };
-            } else if (parsedDecision.route === "ANSWER_DIRECTLY" && parsedDecision.message) {
-                // For ANSWER_DIRECTLY, append the final answer to the existing messages
-                const finalResponse = new AIMessage(parsedDecision.message);
-                return {
-                    messages: [...state.messages, finalResponse],
-                    route: parsedDecision.route
-                };
-            } else {
-                // Fallback for unexpected or missing information
-                console.error("Unexpected router decision format or missing message:", parsedDecision);
-                const fallbackResponse = new AIMessage("Não foi possível determinar uma resposta clara no momento.");
-                return {
-                    messages: [...state.messages, fallbackResponse],
-                    route: "ANSWER_DIRECTLY"
-                };
-            }
-        };
-
-        const retrieveAndAnswer = async (state) => {
-            // Extract the URL to scrape from the state
-            console.log(">>> ENTERED retrieveAndAnswer with state:", state); 
-            const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
-            const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
-            
-            const urlToScrape = AIContentResponse.message || "no url found";
-
-            console.log("> URL to scrape in retrieveAndAnswer:", urlToScrape);
-
-            if (!urlToScrape) {
-                // Fallback if scraping failed or no URL was provided by router
-                return { 
-                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
-                    sourceDocuments: [] 
-                };
-            }
-
-            console.log("> Iniciando scraping com Firecrawl para a URL:", urlToScrape);
-            const resultFromScrape = await firecrawlScrapper(urlToScrape)
-
-            if (!resultFromScrape || resultFromScrape.length === 0 || resultFromScrape === "undefined") {
-                // Fallback if scraping failed or no URL was provided by router
-                return { 
-                    messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica. Responderei com base no meu conhecimento geral.")], 
-                    sourceDocuments: [] 
-                };
-            }
-
-            // Use a simpler approach without historyAwareRetriever
-            console.log('> scrapping feito com sucesso, dados recuperados.')
-            
-            // const retriever = currentVectorstore.asRetriever();
-            // const docs = await retriever.getRelevantDocuments(state.messages[0].content);
-            
-            // if (docs.length === 0) {
-            //     return { 
-            //         messages: [new AIMessage("Não encontrei informações relevantes nas fontes fornecidas para esta pergunta específica.")], 
-            //         sourceDocuments: [] 
-            //     };
-            // }
-
-            // Create a simple prompt for the LLM
-            const docsConsulted = urlToScrape;
-            const context = String(resultFromScrape);
-            const prompt = `Com base no contexto fornecido abaixo, responda à pergunta do usuário de forma clara e precisa. Se a resposta não estiver no contexto, diga que não tem informações suficientes.
-
-            Contexto:
-            ${context}
-
-            Pergunta: ${state.messages[0].content}
-
-            Resposta: para a resposta, você pode retornar sobre o que o usuário perguntou baseado no contexto. Retorne um novo campo JSON além do routerDecission e message, chamado contextAnswer, que deve ser a resposta baseada no contexto.
-            
-            Responda APENAS com um objeto JSON válido, sem nenhuma outra conversa, texto ou formatação markdown. Exemplo de resposta válida:
-            
-            {"routerDecision":"WEB_SEARCH","message":"https://ajuda.infinitepay.io/pt-BR/articles/link-do-artigo-que-voce-recebeu-informacao","contextAnswer":"As informações da InfinitePay são..."}
-
-            APENAS da forma acima. Não adicione nada mais de elementos JSON e não formate em markdown.
-
-            Certifique-se de que você vai colocar o link de onde você buscou a informação no campo message, e a resposta baseada no contexto no campo contextAnswer.
-            `;
-
-            console.log('> iniciando chamada ao LLM com prompt e contexto para resposta final ao usuário.');
-            const response = await llm.invoke(prompt);
-            console.log('> resposta final do LLM:', response);
-            console.log('> RESPONSE TYPE: ', typeof response);
-            console.log('> RESPONSE AI MESSAGE content: ', response.content);
-            // console.log('> RESPONSE AI MESSAGE JSON PARSED: ', JSON.parse(response.content));
-
-            let responseCleaned;
-            if (response.content.includes('```')) { responseCleaned = response.content.replace(/```json\n|```/g, ''); }
-
-            let JSONParsedResponse = JSON.parse(responseCleaned);
-            console.log('> resposta final do LLM JSON:', JSONParsedResponse);
-            console.log('> resposta final do LLM JSON Content:', JSONParsedResponse.content);
-            if (JSONParsedResponse.includes("```")) {
-                console.log('> resposta final do LLM contém formatação markdown, removendo-a.');
-                response.content = response.content.replace(/```json/g, '').replace(/```/g, '');
-            }
-            
-            try {
-            console.log('> resposta final do LLM como contextAnswer:', JSON.parse(response.content.contextAnswer));
-            } catch (error) {
-                console.error("Error parsing final LLM response JSON:", error, "Raw output:", response.content);
-                return {
-                    messages: ['Erro ao processar resposta final para JSON.'], 
-                    sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
-                }
-            }
-
-            return { 
-                messages: [new AIMessage(response.content)], 
-                sourceDocuments: docsConsulted ? docsConsulted : 'Any' 
-            };
-        };
-
-
-        
-
-        const workflow = new StateGraph(MessagesAnnotation)
-        .addNode("routeQuestion", routeQuestion)
-        .addNode("retrieveAndAnswer", retrieveAndAnswer)
-        .addEdge(START, "routeQuestion")
-        .addConditionalEdges(
-          "routeQuestion",
-          (state) => {
-            // Check if we have route information in the state
-
-            console.log('State at end of routeQuestion:', state);
-            const LAST_ARRAY_ELEMENT = state.messages[state.messages.length - 1];
-            console.log('state last element content: ', LAST_ARRAY_ELEMENT.content);
-            const AIContentResponse = JSON.parse(LAST_ARRAY_ELEMENT.content);
-            console.log('AIContentResponse: ', AIContentResponse);
-            console.log('content router decision: ', AIContentResponse.routerDecision);
-            // console.log('State routes at end of routeQuestion:', state.route);
-
-            const routeDecision = AIContentResponse.routerDecision || "ANSWER_DIRECTLY";
-
-            if (routeDecision === "WEB_SEARCH") {
-              console.log('entered in routeQuestion Websearch');
-              return "WEB_SEARCH";
-            } else {
-              // For ANSWER_DIRECTLY or any other case, return null to end
-              console.log('entered in routeQuestion answerDirectly');              
-              return null; // Use null instead of END to terminate the workflow
-            }
-          },
-          {
-            "WEB_SEARCH": "retrieveAndAnswer",
-            // Optionally, you can map null to END explicitly
-            null: END
-          } //here it maps to where the conditional edge will let to.
-        )
-        .addEdge("retrieveAndAnswer", END);
-
-        appGraph = workflow.compile();
-        console.log("Langchain graph compiled.");
     }
 
     async invokeGraph(messages, sessionId, chatHistory = []) {
