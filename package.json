@@ -6,8 +6,8 @@
   "proxy": "http://localhost:3000",
   "scripts": {
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "front:dev": "vite",
-    "front:build": "vite build",
+    "dev": "vite",
+    "build": "vite build",
     "front:preview": "vite preview",
     "api:dev": "vercel dev"
   },

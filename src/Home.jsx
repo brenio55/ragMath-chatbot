@@ -1,35 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import LoadingDots from './components/LoadingDots';
+import ChatContainer from './components/ChatContainer';
 
 const apiKeyGlobal = import.meta.env.VITE_LastSecondTeacherAPIKEY;
 const apiUrl = import.meta.env.VITE_API_URL;
 const programMode = import.meta.env.VITE_PROGRAM_MODE;
 
 const typingVelocity = 50;
-const threads = [];
+const threads = [{
+  "role": "system",
+  "content": "You are interacting with a user who is a KnowledgeAgent. Your role is to assist them."
+}];
 
 function Home() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
-  const [title, setTitle] = useState('');
-  const [subTitle, setSubTitle] = useState('');
+  const [title, setTitle] = useState("CloudWalk Knowledge Agent");
+  const [subTitle, setSubTitle] = useState("How can I assist you today?");
   const [history, setHistory] = useState([]);
   const [threadCleared, setThreadCleared] = useState(false);
   const [threadId, setThreadId] = useState(uuidv4());
-  const [work, setWork] = useState('');
+  const [work, setWork] = useState('KnowledgeAgent'); // Set default to KnowledgeAgent
   const [pdfLoading, setPdfLoading] = useState(false);
   const typingIntervalRef = useRef(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    if (!work) {
-      typeText("Welcome! I'm the Last Second Teacher. Are you a student or a teacher?", setTitle);
-      return () => {
-        clearTypingInterval();
-        clearThread();
-      };
-    }
-  }, [work]);
+    // The initial welcome message and role selection are removed.
+    // The 'work' state is now always 'KnowledgeAgent', so this effect is no longer needed for initial setup.
+    return () => {
+      clearTypingInterval();
+      clearThread();
+    };
+  }, []); // Empty dependency array means this runs once on mount and cleanup on unmount
 
   useEffect(() => {
     scrollToBottom();
@@ -55,19 +59,7 @@ function Home() {
     if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
   };
 
-  const handleRoleSelection = (selectedRole) => {
-    clearTypingInterval();
-    console.log('Role selected:', selectedRole);
-    setWork(selectedRole);
-    setTitle("Last Second Teacher - AI Worksheet Generator");
-    setSubTitle("Let me know what grade you're looking for me to create :)");
-
-    // Add initial system message to threads
-    threads.push({
-      role: 'system',
-      content: `You are interacting with a user who is a ${selectedRole}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.`
-    });
-  };
+  // handleRoleSelection is no longer needed as role is defaulted
 
   const handleInputChange = event => {
     setInputText(event.target.value);
@@ -169,61 +161,8 @@ function Home() {
     threads.length = 0;
     threads.push({
       "role": "system",
-      "content": `You are interacting with a user who is a ${work}. Your role is to assist them. If they ask about generating a worksheet, or just mention a worksheet topic, tell them to press the 'Generate PDF' button to create the worksheet.`
+      "content": "You are interacting with a user who is a KnowledgeAgent. Your role is to assist them."
     });
-  };
-
-  const generatePDF = async () => {
-    setPdfLoading(true);
-    const apiPath = `${apiUrl}/generate-pdf`;
-    console.log('Generating PDF for thread:', programMode === 'local' ? threadId : 'hidden');
-    if (programMode === 'local') console.log('API path called:', apiPath);
-
-    try {
-      const response = await fetch(apiPath, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${programMode === 'local' ? apiKeyGlobal : 'hidden'}`,
-        },
-        body: JSON.stringify({ thread: threads })
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(new Blob([blob]));
-        triggerPDFDownload(url);
-        console.log('PDF generated and download triggered');
-
-        const pdfMessage = createSystemMessage(
-          `PDF generated successfully. <a href="${url}" download="worksheet.pdf">Download PDF again</a>`
-        );
-        updateMessages(pdfMessage);
-        setHistory(history => [...history, 'System: PDF generated successfully.']);
-      } else {
-        throw new Error('Failed to generate PDF');
-      }
-    } catch (error) {
-      handlePdfError(error);
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  const triggerPDFDownload = (url) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'worksheet.pdf');
-    document.body.appendChild(link);
-    link.click();
-    link.parentNode.removeChild(link);
-  };
-
-  const handlePdfError = (error) => {
-    console.error('Error generating PDF:', error);
-    const errorMessage = createSystemMessage(`Error generating PDF. Please try again later. Error: ${error.message}`, true);
-    updateMessages(errorMessage);
-    setHistory(history => [...history, `System: Error generating PDF. Please try again later. Error: ${error.message}`]);
   };
 
   const scrollToBottom = () => {
@@ -232,59 +171,21 @@ function Home() {
 
   return (
     <div className="home">
-      {work ? (
-        <>
-          <h2>{title}</h2>
-          <h3>{subTitle}</h3>
-          <div className="chat-container">
-            <div className="chat-messages">
-              {messages.map((message, index) => (
-                <div key={index} className={`message ${message.role}${message.error ? " error" : ""}`}>
-                  {message.loading ? <LoadingDots /> : message.text}
-                </div>
-              ))}
-              {pdfLoading && (
-                <div className="message system">
-                  <LoadingDots />
-                  <span>Generating PDF...</span>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <form onSubmit={handleSubmit} className="chat-input-form">
-              <div className="buttonFlex">
-                <div className="flex twoItems">
-                  <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
-                  <button type="submit">Send</button>
-                </div>
-                <div className="flex twoItems">
-                  <button type="button" onClick={generatePDF}>Generate PDF</button>
-                  <button type="button" onClick={clearThread}>Clear Thread</button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </>
-      ) : (
-        <>
-          <h2>{title}</h2>
-          <div className="buttonsInit">
-            <button onClick={() => handleRoleSelection('student')}>I am a Student</button>
-            <button onClick={() => handleRoleSelection('teacher')}>I am a Teacher</button>
-          </div>
-        </>
-      )}
+      <>
+        <h2>{title}</h2>
+        <h3>{subTitle}</h3>
+        <ChatContainer
+          messages={messages}
+          inputText={inputText}
+          handleInputChange={handleInputChange}
+          handleSubmit={handleSubmit}
+          
+          clearThread={clearThread}
+          
+          chatEndRef={chatEndRef}
+        />
+      </>
       {threadCleared && <div className="thread-cleared">The Thread was cleared</div>}
-    </div>
-  );
-}
-
-function LoadingDots() {
-  return (
-    <div className="loading-dots">
-      <span>.</span>
-      <span>.</span>
-      <span>.</span>
     </div>
   );
 }
