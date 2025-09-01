@@ -380,3 +380,46 @@ body {
 .chat-info p {
   margin: 0;
 }
+
+.system-message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.source-documents {
+  margin-top: 10px;
+  border-top: 1px solid #3e3f4b;
+  padding-top: 10px;
+}
+
+.source-documents strong {
+  color: #a1a1ff;
+}
+
+.source-documents ul {
+  list-style: none;
+  padding: 0;
+  margin: 5px 0 0 0;
+}
+
+.source-documents li {
+  margin-bottom: 3px;
+}
+
+.source-documents a {
+  color: #8aff8a; /* Cor verde para links de fonte */
+  text-decoration: none;
+}
+
+.source-documents a:hover {
+  text-decoration: underline;
+}
+
+.router-decision-text {
+  margin-top: 10px;
+  font-size: 0.85em;
+  color: #b0b0b0;
+  border-top: 1px solid #3e3f4b;
+  padding-top: 5px;
+}

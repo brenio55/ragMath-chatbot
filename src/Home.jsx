@@ -63,7 +63,7 @@ function Home() {
     event.preventDefault();
     if (inputText.trim() !== '') {
       const userMessageContent = inputText;
-      const userMessage = `Me: ${userMessageContent}`;
+      const userMessage = `${userMessageContent}`;
       updateMessages({ text: userMessage, content: userMessage, role: 'user' });
       setHistory(history => [...history, userMessage]);
 
@@ -86,7 +86,7 @@ function Home() {
   const handleApiResponse = (data) => {
     setJsonResponse(data); // Store the raw JSON response
     if (data && data.response) {
-      const systemMessage = createSystemMessage(data.response);
+      const systemMessage = createSystemMessage(data);
       updateMessages(systemMessage, true);
       setHistory(history => [...history, `System: ${data.response}`]);
 
@@ -107,15 +107,28 @@ function Home() {
     threads.push({ role: 'system', content: `No Return from System. Please, try again later. Error: ${error.message}` });
   };
 
-  const createSystemMessage = (message, isError = false) => {
+  const createSystemMessage = (data, isError = false) => {
+    const message = data.response;
+    const agentName = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[0].agent : 'System';
+    const routerDecision = data.agent_workflow && data.agent_workflow.length > 0 ? data.agent_workflow[0].decision : 'N/A';
+    const sourceDocuments = data.source_agent_response || [];
+
     return {
       text: (
-        <span>
-          <span className="system-label">System: </span>
-          <span className="system-text">{message}</span>
-        </span>
+        <div className="system-message-content">
+          <p><span className="system-label">Agente [ {agentName} ]: </span> <span className="system-text">{message}</span></p>
+          {sourceDocuments.length > 0 && (
+            <div className="source-documents">
+              <strong>Base de Dados:</strong>
+              <ul>
+                {sourceDocuments}
+              </ul>
+            </div>
+          )}
+          <p className="router-decision-text">Decisão tomada baseada no último prompt: {routerDecision}</p>
+        </div>
       ),
-      content: 'System: ' + message,
+      content: `Agente [ ${agentName} ]: ${message}`,
       role: 'system',
       error: isError
     };
