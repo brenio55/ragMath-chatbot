@@ -105,7 +105,7 @@ html, body {
   border-radius: 8px;
   background-color: #202123c2;
   box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.5);
-  scrollbar-width: none;
+  scrollbar-width: 5px;
   overflow: hidden;
 }
 
@@ -122,9 +122,6 @@ html, body {
   gap: 10px;
 }
 
-.chat-messages::-webkit-scrollbar {
-  display: none;
-}
 
 .chat-input-form {
   padding: 20px;
