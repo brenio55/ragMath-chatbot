@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import LoadingDots from './LoadingDots';
 
 const ChatContainer = ({
@@ -22,11 +22,11 @@ const ChatContainer = ({
       </div>
       <form onSubmit={handleSubmit} className="chat-input-form">
         <div className="buttonFlex">
-          <div className="flex twoItems">
+          <div className="flex">
             <input type="text" placeholder="Type your message..." value={inputText} onChange={handleInputChange} />
             <button type="submit">Send</button>
           </div>
-          <div className="flex twoItems">
+          <div className="flex">
             <button type="button" onClick={clearThread}>Clear Thread</button>
           </div>
         </div>
